@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sentinel Forge AI</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">
+            <i data-lucide="shield-check"></i>
+          </div>
+          <div>
+            <p class="eyebrow">Defensive AI Cybersecurity Lab</p>
+            <h1>Sentinel Forge AI</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="live-pill">
+            <span class="pulse"></span>
+            <span>Local analysis engine</span>
+          </div>
+          <button class="icon-button" id="exportReport" type="button" aria-label="Export report" title="Export report">
+            <i data-lucide="download"></i>
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="control-rail" aria-label="Analysis controls">
+          <section class="panel ingest-panel">
+            <div class="section-title">
+              <i data-lucide="database-zap" aria-hidden="true"></i>
+              <h2>Telemetry</h2>
+            </div>
+            <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Drop JSON or log file">
+              <i data-lucide="file-up" aria-hidden="true"></i>
+              <span>Drop JSON or logs</span>
+              <small>JSON array, JSONL, or raw security lines</small>
+              <input id="fileInput" type="file" accept=".json,.jsonl,.log,.txt" />
+            </div>
+            <div class="button-row">
+              <button id="loadSample" class="primary-button" type="button">
+                <i data-lucide="sparkles"></i>
+                Load Sample
+              </button>
+              <button id="clearInput" class="ghost-button" type="button">
+                <i data-lucide="eraser"></i>
+                Clear
+              </button>
+            </div>
+            <label class="input-label" for="eventInput">Event stream</label>
+            <textarea id="eventInput" spellcheck="false" placeholder="Paste security events, cloud audit logs, EDR alerts, auth events, DNS records, or firewall lines..."></textarea>
+          </section>
+
+          <section class="panel tuning-panel">
+            <div class="section-title">
+              <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+              <h2>Model Controls</h2>
+            </div>
+            <label class="range-label" for="sensitivity">
+              Sensitivity
+              <span id="sensitivityValue">72</span>
+            </label>
+            <input id="sensitivity" type="range" min="40" max="95" value="72" />
+            <label class="range-label" for="correlation">
+              Correlation window
+              <span id="correlationValue">6h</span>
+            </label>
+            <input id="correlation" type="range" min="1" max="24" value="6" />
+            <div class="toggle-grid" role="group" aria-label="Detection modes">
+              <label>
+                <input type="checkbox" id="modeIdentity" checked />
+                <span>Identity</span>
+              </label>
+              <label>
+                <input type="checkbox" id="modeEndpoint" checked />
+                <span>Endpoint</span>
+              </label>
+              <label>
+                <input type="checkbox" id="modeNetwork" checked />
+                <span>Network</span>
+              </label>
+              <label>
+                <input type="checkbox" id="modeCloud" checked />
+                <span>Cloud</span>
+              </label>
+            </div>
+            <button id="runAnalysis" class="primary-button wide" type="button">
+              <i data-lucide="radar"></i>
+              Run AI Triage
+            </button>
+          </section>
+        </aside>
+
+        <section class="analysis-deck">
+          <nav class="tabs" aria-label="Views">
+            <button class="tab active" data-tab="overview" type="button">
+              <i data-lucide="layout-dashboard"></i>
+              Overview
+            </button>
+            <button class="tab" data-tab="incidents" type="button">
+              <i data-lucide="siren"></i>
+              Incidents
+            </button>
+            <button class="tab" data-tab="graph" type="button">
+              <i data-lucide="workflow"></i>
+              Attack Graph
+            </button>
+            <button class="tab" data-tab="copilot" type="button">
+              <i data-lucide="bot"></i>
+              Co-Pilot
+            </button>
+            <button class="tab" data-tab="playbooks" type="button">
+              <i data-lucide="clipboard-check"></i>
+              Playbooks
+            </button>
+          </nav>
+
+          <section id="overview" class="view active" aria-labelledby="overview">
+            <div class="kpi-grid">
+              <article class="metric critical">
+                <span>Critical Risk</span>
+                <strong id="criticalCount">0</strong>
+                <small id="criticalDelta">No events analyzed</small>
+              </article>
+              <article class="metric warning">
+                <span>Correlated Incidents</span>
+                <strong id="incidentCount">0</strong>
+                <small>Multi-signal clusters</small>
+              </article>
+              <article class="metric teal">
+                <span>Model Confidence</span>
+                <strong id="confidenceScore">0%</strong>
+                <small>Based on feature density</small>
+              </article>
+              <article class="metric violet">
+                <span>Coverage</span>
+                <strong id="coverageScore">0</strong>
+                <small>Mapped tactics</small>
+              </article>
+            </div>
+
+            <section class="panel wide-panel">
+              <div class="section-title between">
+                <div>
+                  <i data-lucide="activity" aria-hidden="true"></i>
+                  <h2>Risk Timeline</h2>
+                </div>
+                <span id="timelineCaption">Awaiting telemetry</span>
+              </div>
+              <canvas id="timelineCanvas" width="900" height="260" aria-label="Risk timeline chart"></canvas>
+            </section>
+
+            <section class="overview-grid">
+              <div class="panel">
+                <div class="section-title">
+                  <i data-lucide="brain-circuit" aria-hidden="true"></i>
+                  <h2>AI Verdict</h2>
+                </div>
+                <div id="aiVerdict" class="verdict-box">
+                  Load sample telemetry or paste your own events to generate a defensive triage verdict.
+                </div>
+              </div>
+              <div class="panel">
+                <div class="section-title">
+                  <i data-lucide="target" aria-hidden="true"></i>
+                  <h2>Top Signals</h2>
+                </div>
+                <div id="signalList" class="signal-list empty-state">No signals yet.</div>
+              </div>
+            </section>
+          </section>
+
+          <section id="incidents" class="view" aria-labelledby="incidents">
+            <div class="split-view">
+              <section class="panel">
+                <div class="section-title between">
+                  <div>
+                    <i data-lucide="list-filter" aria-hidden="true"></i>
+                    <h2>Ranked Incidents</h2>
+                  </div>
+                  <span id="incidentSummary">0 open</span>
+                </div>
+                <div id="incidentList" class="incident-list empty-state">No incidents detected yet.</div>
+              </section>
+              <section class="panel inspector">
+                <div class="section-title">
+                  <i data-lucide="scan-search" aria-hidden="true"></i>
+                  <h2>Inspector</h2>
+                </div>
+                <div id="incidentInspector" class="inspector-body">
+                  Select an incident to inspect evidence, MITRE mapping, and recommended containment steps.
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="graph" class="view" aria-labelledby="graph">
+            <section class="panel wide-panel">
+              <div class="section-title between">
+                <div>
+                  <i data-lucide="route" aria-hidden="true"></i>
+                  <h2>Attack Path Graph</h2>
+                </div>
+                <span id="graphCaption">No correlated path</span>
+              </div>
+              <div id="attackGraph" class="attack-graph" aria-label="Attack path graph">
+                <div class="empty-state">Run analysis to build a graph.</div>
+              </div>
+            </section>
+          </section>
+
+          <section id="copilot" class="view" aria-labelledby="copilot">
+            <div class="copilot-layout">
+              <section class="panel">
+                <div class="section-title">
+                  <i data-lucide="message-square-text" aria-hidden="true"></i>
+                  <h2>Ask About The Case</h2>
+                </div>
+                <div id="chatLog" class="chat-log" aria-live="polite"></div>
+                <form id="chatForm" class="chat-form">
+                  <input id="chatInput" type="text" autocomplete="off" placeholder="Ask for blast radius, containment, evidence, or executive summary..." />
+                  <button class="icon-button send" type="submit" aria-label="Send">
+                    <i data-lucide="send"></i>
+                  </button>
+                </form>
+              </section>
+              <section class="panel">
+                <div class="section-title">
+                  <i data-lucide="wand-sparkles" aria-hidden="true"></i>
+                  <h2>Prompt Starters</h2>
+                </div>
+                <div class="prompt-grid">
+                  <button class="prompt-chip" type="button">What is the most likely attack chain?</button>
+                  <button class="prompt-chip" type="button">Summarize this for leadership.</button>
+                  <button class="prompt-chip" type="button">What should we contain first?</button>
+                  <button class="prompt-chip" type="button">Which evidence should an analyst preserve?</button>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="playbooks" class="view" aria-labelledby="playbooks">
+            <section class="panel wide-panel">
+              <div class="section-title between">
+                <div>
+                  <i data-lucide="clipboard-list" aria-hidden="true"></i>
+                  <h2>Adaptive Response Playbooks</h2>
+                </div>
+                <span id="playbookCaption">Generated from detected signals</span>
+              </div>
+              <div id="playbookList" class="playbook-list empty-state">No playbooks generated yet.</div>
+            </section>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script src="sample-data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/astra.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/astra.svg" />
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=10" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
   </head>
   <body>
@@ -260,6 +260,12 @@
               </div>
               <label class="field-label" for="resumeText">Resume summary</label>
               <textarea id="resumeText" placeholder="Paste your resume summary, skills, education, projects, certifications, and experience"></textarea>
+              <label class="file-drop" for="resumeFile">
+                <i data-lucide="file-up"></i>
+                <span>Import resume text</span>
+                <input id="resumeFile" type="file" accept=".txt,.md,.csv,.json" />
+              </label>
+              <p id="resumeFileStatus" class="helper-text">Keep your resume here in the Resume Profile. It is stored locally on this device.</p>
               <label class="field-label" for="targetRoles">Target roles</label>
               <input id="targetRoles" type="text" placeholder="Cybersecurity intern, SOC analyst intern, GRC intern" />
               <label class="field-label" for="workAuthNotes">Work authorization notes</label>
@@ -366,6 +372,21 @@
                 <span>Import text document</span>
                 <input id="bountyFile" type="file" accept=".txt,.md,.json,.har,.log,.csv,.yaml,.yml" />
               </label>
+              <div class="field-grid">
+                <div>
+                  <label class="field-label" for="submissionMethod">Submission method</label>
+                  <select id="submissionMethod">
+                    <option value="platform">Platform / program portal</option>
+                    <option value="email">Email</option>
+                    <option value="form">Web form</option>
+                    <option value="unknown">Extract from document</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="submissionTarget">Submission target</label>
+                  <input id="submissionTarget" type="text" placeholder="security@example.com or report URL" />
+                </div>
+              </div>
               <label class="check-row strong">
                 <input id="scopeApproved" type="checkbox" />
                 <span>Authorized bug bounty scope confirmed</span>
@@ -462,6 +483,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=10"></script>
   </body>
 </html>

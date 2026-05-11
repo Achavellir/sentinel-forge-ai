@@ -36,6 +36,7 @@ const defaultState = {
   career: {
     resumeText:
       "Master's in Cybersecurity from Webster University. Pursuing doctorate at Belhaven University. Cybersecurity interests include SOC analysis, vulnerability management, GRC, application security, cloud security, bug bounty research, and AI-assisted security operations.",
+    resumeFileName: "",
     targetRoles: "Cybersecurity intern, SOC analyst intern, GRC intern, vulnerability management intern, application security intern, cloud security intern",
     workAuthNotes:
       "F-1 student. CPT authorization must be approved on I-20 before any off-campus work starts. Role should be directly related to cybersecurity studies.",
@@ -105,6 +106,8 @@ function cacheElements() {
     "jobsAssessmentCount",
     "jobsInterviewCount",
     "resumeText",
+    "resumeFile",
+    "resumeFileStatus",
     "targetRoles",
     "workAuthNotes",
     "saveCareerProfile",
@@ -141,6 +144,8 @@ function cacheElements() {
     "targetAsset",
     "scopeNotes",
     "bountyFile",
+    "submissionMethod",
+    "submissionTarget",
     "scopeApproved",
     "assessSecurity",
     "saveSecurity",
@@ -207,6 +212,15 @@ function bindEvents() {
   elements.saveResearch.addEventListener("click", saveResearchProject);
 
   elements.saveCareerProfile.addEventListener("click", saveCareerProfile);
+  elements.resumeFile.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    state.career.resumeFileName = file.name;
+    elements.resumeText.value = await file.text();
+    saveCareerProfile();
+    showToast("Resume imported");
+  });
+
   elements.analyzeJob.addEventListener("click", () => {
     state.latestJobPacket = buildJobPacket();
     saveState();
@@ -405,6 +419,9 @@ function renderResearchOutput() {
 
 function renderCareer() {
   elements.resumeText.value = state.career.resumeText || "";
+  elements.resumeFileStatus.textContent = state.career.resumeFileName
+    ? `Resume stored locally from ${state.career.resumeFileName}.`
+    : "Keep your resume here in the Resume Profile. It is stored locally on this device.";
   elements.targetRoles.value = state.career.targetRoles || "";
   elements.workAuthNotes.value = state.career.workAuthNotes || "";
   if (!elements.jobDate.value) {
@@ -963,8 +980,11 @@ function buildSecurityAssessment() {
   const program = elements.programName.value.trim() || "Unspecified program";
   const target = elements.targetAsset.value.trim() || "Unspecified target";
   const notes = elements.scopeNotes.value.trim();
+  const submissionMethod = elements.submissionMethod.value;
+  const submissionTarget = elements.submissionTarget.value.trim();
   const authorized = elements.scopeApproved.checked;
   const review = analyzeBountyDocument(`${target}\n${notes}`);
+  const rules = extractProgramRules(notes, submissionMethod, submissionTarget);
 
   if (!authorized) {
     return `
@@ -982,6 +1002,8 @@ function buildSecurityAssessment() {
         <li>Confirm allowed test methods, prohibited actions, rate limits, and report rules.</li>
         <li>Use test accounts only where the program allows them.</li>
       </ul>
+      <h3>Submission Rules Detected</h3>
+      ${renderSubmissionRules(rules)}
     `;
   }
 
@@ -998,6 +1020,8 @@ function buildSecurityAssessment() {
     <div class="finding-list">
       ${findings.map(renderFinding).join("")}
     </div>
+    <h3>Program Submission Workflow</h3>
+    ${renderSubmissionWorkflow(program, target, findings, rules)}
     <h3>Detected Assets And Endpoints</h3>
     <div class="keyword-pills">
       ${review.assets.length ? review.assets.slice(0, 18).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("") : "<span>No concrete asset was detected. Add URLs, API paths, or endpoint names for stronger analysis.</span>"}
@@ -1023,6 +1047,8 @@ function saveSecurityReport() {
     program,
     target,
     notes,
+    submissionMethod: elements.submissionMethod.value,
+    submissionTarget: elements.submissionTarget.value.trim(),
     authorized: elements.scopeApproved.checked,
     assessment,
     createdAt: new Date().toISOString()
@@ -1202,6 +1228,108 @@ function renderFinding(finding) {
       <p>${escapeHtml(finding.remediation)}</p>
     </article>
   `;
+}
+
+function extractProgramRules(input, selectedMethod, selectedTarget) {
+  const raw = String(input || "");
+  const emailMatch = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  const reportUrl = (raw.match(/https?:\/\/[^\s"'<>`]*(?:hackerone|bugcrowd|intigriti|yeswehack|bugcrowd\.com|forms|report|submit)[^\s"'<>`]*/i) || [])[0];
+  const method =
+    selectedMethod !== "unknown"
+      ? selectedMethod
+      : reportUrl
+        ? "platform"
+        : emailMatch
+          ? "email"
+          : "unknown";
+  const target = selectedTarget || reportUrl || emailMatch?.[0] || "";
+  const ruleLines = raw
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => /(submit|report|email|send|disclosure|scope|out of scope|prohibited|do not|rate|bounty|reward|severity|impact|safe harbor)/i.test(line))
+    .slice(0, 8);
+
+  return {
+    method,
+    target,
+    email: method === "email" ? target || emailMatch?.[0] || "" : emailMatch?.[0] || "",
+    reportUrl: method !== "email" ? target || reportUrl || "" : reportUrl || "",
+    ruleLines
+  };
+}
+
+function renderSubmissionRules(rules) {
+  return `
+    <ul>
+      <li>Method: ${escapeHtml(formatSubmissionMethod(rules.method))}</li>
+      <li>Target: ${rules.target ? escapeHtml(rules.target) : "No submission target detected yet."}</li>
+      ${rules.ruleLines.length ? rules.ruleLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("") : "<li>Paste the program's submission instructions to extract exact rules.</li>"}
+    </ul>
+  `;
+}
+
+function renderSubmissionWorkflow(program, target, findings, rules) {
+  const topFinding = findings.find((finding) => finding.severity !== "Info") || findings[0];
+  const subject = `[Bug bounty] ${topFinding.title} on ${target}`;
+  const body = buildBountySubmissionBody(program, target, topFinding, rules);
+  const mailto =
+    rules.method === "email" && rules.email
+      ? `<p><a class="submission-link" href="mailto:${encodeURIComponent(rules.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}">Open email draft for top finding</a></p>`
+      : "";
+
+  return `
+    <div class="submission-panel">
+      ${renderSubmissionRules(rules)}
+      <h4>Real workflow</h4>
+      <ol>
+        <li>Submit one bug per report. Do not bundle unrelated issues into one submission.</li>
+        <li>Use the highest-confidence finding first: ${escapeHtml(topFinding.title)}.</li>
+        <li>Review every line, redact secrets/tokens, then submit by ${escapeHtml(formatSubmissionMethod(rules.method))}.</li>
+        <li>After submission, save the report and update status in this app.</li>
+      </ol>
+      ${mailto}
+      <h4>Top finding submission draft</h4>
+      <pre>${escapeHtml(body)}</pre>
+    </div>
+  `;
+}
+
+function buildBountySubmissionBody(program, target, finding, rules) {
+  return [
+    `Program: ${program}`,
+    `Target: ${target}`,
+    `Finding: ${finding.title}`,
+    `Severity: ${finding.severity}`,
+    `Confidence: ${finding.confidence}%`,
+    "",
+    "Summary:",
+    finding.report,
+    "",
+    "Evidence:",
+    ...finding.evidence.map((item, index) => `${index + 1}. ${item}`),
+    "",
+    "Impact:",
+    finding.impact,
+    "",
+    "Safe reproduction steps to complete:",
+    finding.validation,
+    "",
+    "Remediation:",
+    finding.remediation,
+    "",
+    "Submission notes:",
+    rules.ruleLines.length ? rules.ruleLines.join("\n") : "Follow the program page instructions exactly."
+  ].join("\n");
+}
+
+function formatSubmissionMethod(method) {
+  const labels = {
+    platform: "program platform or portal",
+    email: "email",
+    form: "web form",
+    unknown: "not detected"
+  };
+  return labels[method] || labels.unknown;
 }
 
 function extractBountyAssets(input) {

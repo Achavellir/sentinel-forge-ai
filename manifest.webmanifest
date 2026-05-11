@@ -1,0 +1,19 @@
+{
+  "name": "Achavelli Personal Assistant",
+  "short_name": "Achavelli",
+  "description": "A local-first personal assistant for planning, job tracking, research, voice-gated commands, and authorized security work.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/astra.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

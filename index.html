@@ -2,265 +2,461 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sentinel Forge AI</title>
-    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5f5f7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Achavelli" />
+    <title>Achavelli Personal Assistant</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/astra.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/astra.svg" />
+    <link rel="stylesheet" href="styles.css?v=8" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-lockup">
-          <div class="brand-mark" aria-hidden="true">
-            <i data-lucide="shield-check"></i>
-          </div>
+      <aside class="side-rail" aria-label="Primary">
+        <div class="brand">
+          <img src="icons/astra.svg" alt="" />
           <div>
-            <p class="eyebrow">Defensive AI Cybersecurity Lab</p>
-            <h1>Sentinel Forge AI</h1>
+            <p>Achavelli</p>
+            <span>Personal OS</span>
           </div>
         </div>
-        <div class="topbar-actions">
-          <div class="live-pill">
-            <span class="pulse"></span>
-            <span>Local analysis engine</span>
-          </div>
-          <button class="icon-button" id="exportReport" type="button" aria-label="Export report" title="Export report">
-            <i data-lucide="download"></i>
+
+        <nav class="rail-nav" aria-label="Views">
+          <button class="nav-item active" data-view="today" type="button">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Today</span>
           </button>
+          <button class="nav-item" data-view="ask" type="button">
+            <i data-lucide="message-circle"></i>
+            <span>Ask</span>
+          </button>
+          <button class="nav-item" data-view="research" type="button">
+            <i data-lucide="book-open-check"></i>
+            <span>Research</span>
+          </button>
+          <button class="nav-item" data-view="jobs" type="button">
+            <i data-lucide="briefcase-business"></i>
+            <span>Jobs</span>
+          </button>
+          <button class="nav-item" data-view="security" type="button">
+            <i data-lucide="shield-check"></i>
+            <span>Security</span>
+          </button>
+          <button class="nav-item" data-view="memory" type="button">
+            <i data-lucide="database"></i>
+            <span>Memory</span>
+          </button>
+        </nav>
+
+        <div class="rail-status">
+          <div class="status-dot"></div>
+          <div>
+            <strong>Local-first</strong>
+            <span>Cards and wallets locked</span>
+          </div>
         </div>
-      </header>
+      </aside>
 
-      <main class="workspace">
-        <aside class="control-rail" aria-label="Analysis controls">
-          <section class="panel ingest-panel">
-            <div class="section-title">
-              <i data-lucide="database-zap" aria-hidden="true"></i>
-              <h2>Telemetry</h2>
-            </div>
-            <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Drop JSON or log file">
-              <i data-lucide="file-up" aria-hidden="true"></i>
-              <span>Drop JSON or logs</span>
-              <small>JSON array, JSONL, or raw security lines</small>
-              <input id="fileInput" type="file" accept=".json,.jsonl,.log,.txt" />
-            </div>
-            <div class="button-row">
-              <button id="loadSample" class="primary-button" type="button">
+      <main class="main-stage">
+        <header class="topbar">
+          <div>
+            <p id="dateLine" class="date-line">Today</p>
+            <h1 id="viewTitle">Good morning, Achavelli</h1>
+          </div>
+          <div class="top-actions">
+            <button id="voiceButton" class="icon-button" type="button" aria-label="Voice input" title="Voice input">
+              <i data-lucide="mic"></i>
+            </button>
+            <button id="exportButton" class="icon-button" type="button" aria-label="Export data" title="Export data">
+              <i data-lucide="download"></i>
+            </button>
+          </div>
+        </header>
+
+        <section id="today" class="view active" aria-labelledby="viewTitle">
+          <div class="metric-strip">
+            <article class="metric blue">
+              <span>Focus</span>
+              <strong id="focusCount">0</strong>
+              <small>Open priorities</small>
+            </article>
+            <article class="metric green">
+              <span>Research</span>
+              <strong id="projectCount">0</strong>
+              <small>Saved projects</small>
+            </article>
+            <article class="metric orange">
+              <span>Jobs</span>
+              <strong id="jobCount">0</strong>
+              <small>Tracked applications</small>
+            </article>
+            <article class="metric red">
+              <span>Guardrails</span>
+              <strong id="guardrailCount">2</strong>
+              <small>Payment access blocked</small>
+            </article>
+          </div>
+
+          <div class="today-grid">
+            <section class="panel focus-panel">
+              <div class="section-title">
+                <i data-lucide="circle-check-big"></i>
+                <h2>Command Stack</h2>
+              </div>
+              <div id="taskList" class="task-list"></div>
+              <form id="taskForm" class="inline-form">
+                <input id="taskInput" type="text" autocomplete="off" placeholder="Add a priority" />
+                <button class="icon-button filled" type="submit" aria-label="Add priority">
+                  <i data-lucide="plus"></i>
+                </button>
+              </form>
+            </section>
+
+            <section class="panel capture-panel">
+              <div class="section-title">
                 <i data-lucide="sparkles"></i>
-                Load Sample
+                <h2>Quick Capture</h2>
+              </div>
+              <textarea id="quickCapture" placeholder="Drop an idea, deadline, research thought, internship lead, or bounty note"></textarea>
+              <div class="button-row">
+                <button id="saveCapture" class="primary-button" type="button">
+                  <i data-lucide="save"></i>
+                  Save
+                </button>
+                <button class="quiet-button command-chip" data-command="daily-plan" type="button">
+                  <i data-lucide="calendar-check"></i>
+                  Plan
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="section-title between">
+              <div>
+                <i data-lucide="compass"></i>
+                <h2>Next Best Moves</h2>
+              </div>
+              <span id="nextMoveStamp">Updated now</span>
+            </div>
+            <div id="nextMoves" class="move-grid"></div>
+          </section>
+        </section>
+
+        <section id="ask" class="view" aria-labelledby="viewTitle">
+          <div class="ask-layout">
+            <section class="panel chat-panel">
+              <div id="chatLog" class="chat-log" aria-live="polite"></div>
+              <form id="chatForm" class="chat-form">
+                <input id="chatInput" type="text" autocomplete="off" placeholder="Ask Achavelli anything" />
+                <button class="icon-button filled" type="submit" aria-label="Send">
+                  <i data-lucide="send"></i>
+                </button>
+              </form>
+            </section>
+
+            <aside class="assistant-dock">
+              <button class="prompt-card command-chip" data-command="research-paper" type="button">
+                <i data-lucide="file-text"></i>
+                Research paper plan
               </button>
-              <button id="clearInput" class="ghost-button" type="button">
-                <i data-lucide="eraser"></i>
-                Clear
+              <button class="prompt-card command-chip" data-command="bug-bounty" type="button">
+                <i data-lucide="bug"></i>
+                Bug bounty checklist
               </button>
-            </div>
-            <label class="input-label" for="eventInput">Event stream</label>
-            <textarea id="eventInput" spellcheck="false" placeholder="Paste security events, cloud audit logs, EDR alerts, auth events, DNS records, or firewall lines..."></textarea>
-          </section>
+              <button class="prompt-card command-chip" data-command="career-money" type="button">
+                <i data-lucide="briefcase-business"></i>
+                Job tracker plan
+              </button>
+              <button class="prompt-card command-chip" data-command="visa-safe" type="button">
+                <i data-lucide="badge-check"></i>
+                Visa-safe guardrails
+              </button>
+            </aside>
+          </div>
+        </section>
 
-          <section class="panel tuning-panel">
-            <div class="section-title">
-              <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
-              <h2>Model Controls</h2>
-            </div>
-            <label class="range-label" for="sensitivity">
-              Sensitivity
-              <span id="sensitivityValue">72</span>
-            </label>
-            <input id="sensitivity" type="range" min="40" max="95" value="72" />
-            <label class="range-label" for="correlation">
-              Correlation window
-              <span id="correlationValue">6h</span>
-            </label>
-            <input id="correlation" type="range" min="1" max="24" value="6" />
-            <div class="toggle-grid" role="group" aria-label="Detection modes">
-              <label>
-                <input type="checkbox" id="modeIdentity" checked />
-                <span>Identity</span>
-              </label>
-              <label>
-                <input type="checkbox" id="modeEndpoint" checked />
-                <span>Endpoint</span>
-              </label>
-              <label>
-                <input type="checkbox" id="modeNetwork" checked />
-                <span>Network</span>
-              </label>
-              <label>
-                <input type="checkbox" id="modeCloud" checked />
-                <span>Cloud</span>
-              </label>
-            </div>
-            <button id="runAnalysis" class="primary-button wide" type="button">
-              <i data-lucide="radar"></i>
-              Run AI Triage
-            </button>
-          </section>
-        </aside>
+        <section id="research" class="view" aria-labelledby="viewTitle">
+          <div class="workbench-grid">
+            <section class="panel">
+              <div class="section-title">
+                <i data-lucide="graduation-cap"></i>
+                <h2>Research Desk</h2>
+              </div>
+              <label class="field-label" for="researchTopic">Topic</label>
+              <input id="researchTopic" type="text" placeholder="Cybersecurity doctorate research topic" />
+              <label class="field-label" for="researchQuestion">Research question</label>
+              <input id="researchQuestion" type="text" placeholder="What exact question should the paper answer?" />
+              <label class="field-label" for="researchNotes">Notes and sources</label>
+              <textarea id="researchNotes" placeholder="Paste source titles, abstracts, links, or your rough thoughts"></textarea>
+              <div class="button-row">
+                <button id="buildResearch" class="primary-button" type="button">
+                  <i data-lucide="wand-sparkles"></i>
+                  Build
+                </button>
+                <button id="saveResearch" class="quiet-button" type="button">
+                  <i data-lucide="archive"></i>
+                  Save
+                </button>
+              </div>
+            </section>
 
-        <section class="analysis-deck">
-          <nav class="tabs" aria-label="Views">
-            <button class="tab active" data-tab="overview" type="button">
-              <i data-lucide="layout-dashboard"></i>
-              Overview
-            </button>
-            <button class="tab" data-tab="incidents" type="button">
-              <i data-lucide="siren"></i>
-              Incidents
-            </button>
-            <button class="tab" data-tab="graph" type="button">
-              <i data-lucide="workflow"></i>
-              Attack Graph
-            </button>
-            <button class="tab" data-tab="copilot" type="button">
-              <i data-lucide="bot"></i>
-              Co-Pilot
-            </button>
-            <button class="tab" data-tab="playbooks" type="button">
-              <i data-lucide="clipboard-check"></i>
-              Playbooks
-            </button>
-          </nav>
-
-          <section id="overview" class="view active" aria-labelledby="overview">
-            <div class="kpi-grid">
-              <article class="metric critical">
-                <span>Critical Risk</span>
-                <strong id="criticalCount">0</strong>
-                <small id="criticalDelta">No events analyzed</small>
-              </article>
-              <article class="metric warning">
-                <span>Correlated Incidents</span>
-                <strong id="incidentCount">0</strong>
-                <small>Multi-signal clusters</small>
-              </article>
-              <article class="metric teal">
-                <span>Model Confidence</span>
-                <strong id="confidenceScore">0%</strong>
-                <small>Based on feature density</small>
-              </article>
-              <article class="metric violet">
-                <span>Coverage</span>
-                <strong id="coverageScore">0</strong>
-                <small>Mapped tactics</small>
-              </article>
-            </div>
-
-            <section class="panel wide-panel">
+            <section class="panel output-panel">
               <div class="section-title between">
                 <div>
-                  <i data-lucide="activity" aria-hidden="true"></i>
-                  <h2>Risk Timeline</h2>
+                  <i data-lucide="notebook-tabs"></i>
+                  <h2>Paper Blueprint</h2>
                 </div>
-                <span id="timelineCaption">Awaiting telemetry</span>
+                <span id="researchSavedCount">0 saved</span>
               </div>
-              <canvas id="timelineCanvas" width="900" height="260" aria-label="Risk timeline chart"></canvas>
+              <div id="researchOutput" class="rich-output empty-state">No blueprint yet.</div>
+            </section>
+          </div>
+        </section>
+
+        <section id="jobs" class="view" aria-labelledby="viewTitle">
+          <div class="job-metric-strip">
+            <article class="metric blue">
+              <span>Total</span>
+              <strong id="jobsTotalCount">0</strong>
+              <small>Saved in pipeline</small>
+            </article>
+            <article class="metric green">
+              <span>Applied</span>
+              <strong id="jobsAppliedCount">0</strong>
+              <small>Submitted roles</small>
+            </article>
+            <article class="metric orange">
+              <span>Pending</span>
+              <strong id="jobsPendingCount">0</strong>
+              <small>Waiting response</small>
+            </article>
+            <article class="metric red">
+              <span>Rejected</span>
+              <strong id="jobsRejectedCount">0</strong>
+              <small>Closed out</small>
+            </article>
+            <article class="metric purple">
+              <span>Assessments</span>
+              <strong id="jobsAssessmentCount">0</strong>
+              <small>Action required</small>
+            </article>
+            <article class="metric green">
+              <span>Interviews</span>
+              <strong id="jobsInterviewCount">0</strong>
+              <small>Scheduled or done</small>
+            </article>
+          </div>
+
+          <div class="jobs-grid">
+            <section class="panel">
+              <div class="section-title">
+                <i data-lucide="file-user"></i>
+                <h2>Resume Profile</h2>
+              </div>
+              <label class="field-label" for="resumeText">Resume summary</label>
+              <textarea id="resumeText" placeholder="Paste your resume summary, skills, education, projects, certifications, and experience"></textarea>
+              <label class="field-label" for="targetRoles">Target roles</label>
+              <input id="targetRoles" type="text" placeholder="Cybersecurity intern, SOC analyst intern, GRC intern" />
+              <label class="field-label" for="workAuthNotes">Work authorization notes</label>
+              <textarea id="workAuthNotes" placeholder="Example: F-1 student, CPT required before start, cybersecurity role must relate to degree"></textarea>
+              <button id="saveCareerProfile" class="primary-button wide" type="button">
+                <i data-lucide="save"></i>
+                Save Career Profile
+              </button>
             </section>
 
-            <section class="overview-grid">
-              <div class="panel">
-                <div class="section-title">
-                  <i data-lucide="brain-circuit" aria-hidden="true"></i>
-                  <h2>AI Verdict</h2>
+            <section class="panel">
+              <div class="section-title">
+                <i data-lucide="send-horizontal"></i>
+                <h2>Application Builder</h2>
+              </div>
+              <div class="field-grid">
+                <div>
+                  <label class="field-label" for="jobCompany">Company</label>
+                  <input id="jobCompany" type="text" placeholder="Company name" />
                 </div>
-                <div id="aiVerdict" class="verdict-box">
-                  Load sample telemetry or paste your own events to generate a defensive triage verdict.
+                <div>
+                  <label class="field-label" for="jobRole">Role</label>
+                  <input id="jobRole" type="text" placeholder="Security intern" />
                 </div>
               </div>
-              <div class="panel">
-                <div class="section-title">
-                  <i data-lucide="target" aria-hidden="true"></i>
-                  <h2>Top Signals</h2>
+              <label class="field-label" for="jobLink">Job link</label>
+              <input id="jobLink" type="url" placeholder="https://..." />
+              <div class="field-grid">
+                <div>
+                  <label class="field-label" for="jobStatus">Status</label>
+                  <select id="jobStatus">
+                    <option value="drafted">Drafted</option>
+                    <option value="applied">Applied</option>
+                    <option value="pending">Pending</option>
+                    <option value="assessment">Assessment</option>
+                    <option value="interview">Interview</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="offer">Offer</option>
+                  </select>
                 </div>
-                <div id="signalList" class="signal-list empty-state">No signals yet.</div>
+                <div>
+                  <label class="field-label" for="jobDate">Date</label>
+                  <input id="jobDate" type="date" />
+                </div>
+              </div>
+              <label class="field-label" for="jobNextStep">Next step</label>
+              <input id="jobNextStep" type="text" placeholder="Apply, follow up, finish assessment, prepare interview" />
+              <label class="field-label" for="jobDescription">Job description</label>
+              <textarea id="jobDescription" placeholder="Paste the job description. Achavelli will score fit and prepare an application packet."></textarea>
+              <div class="button-row">
+                <button id="analyzeJob" class="primary-button" type="button">
+                  <i data-lucide="sparkles"></i>
+                  Analyze
+                </button>
+                <button id="saveApplication" class="quiet-button" type="button">
+                  <i data-lucide="archive"></i>
+                  Save
+                </button>
               </div>
             </section>
-          </section>
 
-          <section id="incidents" class="view" aria-labelledby="incidents">
-            <div class="split-view">
-              <section class="panel">
-                <div class="section-title between">
-                  <div>
-                    <i data-lucide="list-filter" aria-hidden="true"></i>
-                    <h2>Ranked Incidents</h2>
-                  </div>
-                  <span id="incidentSummary">0 open</span>
-                </div>
-                <div id="incidentList" class="incident-list empty-state">No incidents detected yet.</div>
-              </section>
-              <section class="panel inspector">
-                <div class="section-title">
-                  <i data-lucide="scan-search" aria-hidden="true"></i>
-                  <h2>Inspector</h2>
-                </div>
-                <div id="incidentInspector" class="inspector-body">
-                  Select an incident to inspect evidence, MITRE mapping, and recommended containment steps.
-                </div>
-              </section>
-            </div>
-          </section>
-
-          <section id="graph" class="view" aria-labelledby="graph">
-            <section class="panel wide-panel">
+            <section class="panel output-panel">
               <div class="section-title between">
                 <div>
-                  <i data-lucide="route" aria-hidden="true"></i>
-                  <h2>Attack Path Graph</h2>
+                  <i data-lucide="clipboard-check"></i>
+                  <h2>Application Packet</h2>
                 </div>
-                <span id="graphCaption">No correlated path</span>
+                <span>Review before submitting</span>
               </div>
-              <div id="attackGraph" class="attack-graph" aria-label="Attack path graph">
-                <div class="empty-state">Run analysis to build a graph.</div>
-              </div>
+              <div id="jobOutput" class="rich-output empty-state">No job analyzed yet.</div>
             </section>
-          </section>
 
-          <section id="copilot" class="view" aria-labelledby="copilot">
-            <div class="copilot-layout">
-              <section class="panel">
-                <div class="section-title">
-                  <i data-lucide="message-square-text" aria-hidden="true"></i>
-                  <h2>Ask About The Case</h2>
-                </div>
-                <div id="chatLog" class="chat-log" aria-live="polite"></div>
-                <form id="chatForm" class="chat-form">
-                  <input id="chatInput" type="text" autocomplete="off" placeholder="Ask for blast radius, containment, evidence, or executive summary..." />
-                  <button class="icon-button send" type="submit" aria-label="Send">
-                    <i data-lucide="send"></i>
-                  </button>
-                </form>
-              </section>
-              <section class="panel">
-                <div class="section-title">
-                  <i data-lucide="wand-sparkles" aria-hidden="true"></i>
-                  <h2>Prompt Starters</h2>
-                </div>
-                <div class="prompt-grid">
-                  <button class="prompt-chip" type="button">What is the most likely attack chain?</button>
-                  <button class="prompt-chip" type="button">Summarize this for leadership.</button>
-                  <button class="prompt-chip" type="button">What should we contain first?</button>
-                  <button class="prompt-chip" type="button">Which evidence should an analyst preserve?</button>
-                </div>
-              </section>
-            </div>
-          </section>
-
-          <section id="playbooks" class="view" aria-labelledby="playbooks">
-            <section class="panel wide-panel">
+            <section class="panel pipeline-panel">
               <div class="section-title between">
                 <div>
-                  <i data-lucide="clipboard-list" aria-hidden="true"></i>
-                  <h2>Adaptive Response Playbooks</h2>
+                  <i data-lucide="kanban"></i>
+                  <h2>Application Pipeline</h2>
                 </div>
-                <span id="playbookCaption">Generated from detected signals</span>
+                <button id="exportJobs" class="quiet-button small-button" type="button">
+                  <i data-lucide="download"></i>
+                  Export
+                </button>
               </div>
-              <div id="playbookList" class="playbook-list empty-state">No playbooks generated yet.</div>
+              <div id="applicationList" class="application-list"></div>
             </section>
-          </section>
+          </div>
+        </section>
+
+        <section id="security" class="view" aria-labelledby="viewTitle">
+          <div class="workbench-grid">
+            <section class="panel">
+              <div class="section-title">
+                <i data-lucide="crosshair"></i>
+                <h2>Bug Bounty Lab</h2>
+              </div>
+              <label class="field-label" for="programName">Program</label>
+              <input id="programName" type="text" placeholder="HackerOne, Bugcrowd, company program" />
+              <label class="field-label" for="targetAsset">Target asset</label>
+              <input id="targetAsset" type="text" placeholder="https://authorized-target.example" />
+              <label class="field-label" for="scopeNotes">Observations</label>
+              <textarea id="scopeNotes" placeholder="Paste scope, endpoints, app behavior, response notes, or manual findings"></textarea>
+              <label class="check-row strong">
+                <input id="scopeApproved" type="checkbox" />
+                <span>Authorized scope confirmed</span>
+              </label>
+              <div class="button-row">
+                <button id="assessSecurity" class="primary-button" type="button">
+                  <i data-lucide="scan-search"></i>
+                  Assess
+                </button>
+                <button id="saveSecurity" class="quiet-button" type="button">
+                  <i data-lucide="archive"></i>
+                  Save
+                </button>
+              </div>
+            </section>
+
+            <section class="panel output-panel">
+              <div class="section-title between">
+                <div>
+                  <i data-lucide="shield-alert"></i>
+                  <h2>Security Assessment</h2>
+                </div>
+                <span id="securitySavedCount">0 saved</span>
+              </div>
+              <div id="securityOutput" class="rich-output empty-state">No assessment yet.</div>
+            </section>
+          </div>
+        </section>
+
+        <section id="memory" class="view" aria-labelledby="viewTitle">
+          <div class="memory-grid">
+            <section class="panel">
+              <div class="section-title">
+                <i data-lucide="user-round-cog"></i>
+                <h2>Profile</h2>
+              </div>
+              <label class="field-label" for="profileName">Name</label>
+              <input id="profileName" type="text" />
+              <label class="field-label" for="profileSchool">School</label>
+              <input id="profileSchool" type="text" />
+              <label class="field-label" for="profileGoal">Main goal</label>
+              <textarea id="profileGoal"></textarea>
+              <button id="saveProfile" class="primary-button wide" type="button">
+                <i data-lucide="save"></i>
+                Save Profile
+              </button>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <i data-lucide="lock-keyhole"></i>
+                <h2>Permissions</h2>
+              </div>
+              <div id="permissionList" class="permission-list"></div>
+            </section>
+
+            <section class="panel voice-lock-panel">
+              <div class="section-title">
+                <i data-lucide="audio-lines"></i>
+                <h2>Voice Lock</h2>
+              </div>
+              <label class="check-row strong">
+                <input id="voiceLockEnabled" type="checkbox" />
+                <span>Require unlock phrase before voice commands</span>
+              </label>
+              <label class="field-label" for="unlockPhrase">Unlock phrase</label>
+              <input id="unlockPhrase" type="text" autocomplete="off" />
+              <p id="voiceLockStatus" class="helper-text">Voice lock is local to this device.</p>
+              <div class="button-row voice-actions">
+                <button id="enrollVoice" class="quiet-button" type="button">
+                  <i data-lucide="audio-waveform"></i>
+                  Enroll Voice
+                </button>
+                <button id="saveVoiceLock" class="primary-button" type="button">
+                  <i data-lucide="fingerprint"></i>
+                  Save Lock
+                </button>
+              </div>
+            </section>
+
+            <section class="panel memory-panel">
+              <div class="section-title between">
+                <div>
+                  <i data-lucide="brain"></i>
+                  <h2>Memory</h2>
+                </div>
+                <span id="memoryCount">0 notes</span>
+              </div>
+              <div id="memoryList" class="memory-list"></div>
+            </section>
+          </div>
         </section>
       </main>
     </div>
-    <script src="sample-data.js"></script>
-    <script src="app.js"></script>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js?v=8"></script>
   </body>
 </html>

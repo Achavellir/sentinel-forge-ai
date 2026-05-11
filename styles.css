@@ -829,6 +829,12 @@ select {
   padding: 14px;
 }
 
+.warning-panel {
+  background: #fff7e7;
+  border-color: #f1c56d;
+  color: #4c3714;
+}
+
 .submission-panel h4 {
   font-size: 0.84rem;
   margin: 14px 0 8px;

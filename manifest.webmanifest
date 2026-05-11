@@ -1,7 +1,7 @@
 {
   "name": "Achavelli Personal Assistant",
   "short_name": "Achavelli",
-  "description": "A local-first personal assistant for planning, job tracking, research, voice-gated commands, and authorized security work.",
+  "description": "A local-first personal assistant for planning, job tracking, research, voice-gated commands, and URL-based authorized security work.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

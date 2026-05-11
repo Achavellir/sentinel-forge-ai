@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/astra.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/astra.svg" />
-    <link rel="stylesheet" href="styles.css?v=10" />
+    <link rel="stylesheet" href="styles.css?v=14" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
   </head>
   <body>
@@ -359,42 +359,19 @@
             <section class="panel">
               <div class="section-title">
                 <i data-lucide="crosshair"></i>
-                <h2>Bug Bounty Analyzer</h2>
+                <h2>Bug Bounty URL Analyzer</h2>
               </div>
-              <label class="field-label" for="programName">Program</label>
-              <input id="programName" type="text" placeholder="HackerOne, Bugcrowd, company program" />
-              <label class="field-label" for="targetAsset">Target asset</label>
-              <input id="targetAsset" type="text" placeholder="https://authorized-target.example" />
-              <label class="field-label" for="scopeNotes">Full document, evidence, and notes</label>
-              <textarea id="scopeNotes" placeholder="Paste the full bug bounty scope, documentation, app notes, endpoints, request/response evidence, HAR text, screenshots notes, or manual findings. Achavelli will extract likely bugs, severity, evidence, report text, and remediation."></textarea>
-              <label class="file-drop" for="bountyFile">
-                <i data-lucide="file-up"></i>
-                <span>Import text document</span>
-                <input id="bountyFile" type="file" accept=".txt,.md,.json,.har,.log,.csv,.yaml,.yml" />
-              </label>
-              <div class="field-grid">
-                <div>
-                  <label class="field-label" for="submissionMethod">Submission method</label>
-                  <select id="submissionMethod">
-                    <option value="platform">Platform / program portal</option>
-                    <option value="email">Email</option>
-                    <option value="form">Web form</option>
-                    <option value="unknown">Extract from document</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="field-label" for="submissionTarget">Submission target</label>
-                  <input id="submissionTarget" type="text" placeholder="security@example.com or report URL" />
-                </div>
-              </div>
+              <label class="field-label" for="programUrl">Program URL</label>
+              <input id="programUrl" type="url" placeholder="https://hackerone.com/..." />
+              <p class="helper-text">Paste the official HackerOne, Bugcrowd, Intigriti, YesWeHack, Hacker101, or VDP URL. Achavelli fetches the page locally, extracts scope, submission rules, payout information, and bug classes to hunt.</p>
               <label class="check-row strong">
                 <input id="scopeApproved" type="checkbox" />
-                <span>Authorized bug bounty scope confirmed</span>
+                <span>This is an official authorized bug bounty or VDP page</span>
               </label>
               <div class="button-row">
                 <button id="assessSecurity" class="primary-button" type="button">
-                  <i data-lucide="scan-search"></i>
-                  Assess
+                  <i data-lucide="radar"></i>
+                  Fetch & Analyze
                 </button>
                 <button id="saveSecurity" class="quiet-button" type="button">
                   <i data-lucide="archive"></i>
@@ -411,7 +388,7 @@
                 </div>
                 <span id="securitySavedCount">0 saved</span>
               </div>
-              <div id="securityOutput" class="rich-output empty-state">Paste a real authorized program document or evidence, then run Analyze.</div>
+              <div id="securityOutput" class="rich-output empty-state">Paste the official authorized program URL, confirm scope, then run Fetch & Analyze.</div>
             </section>
           </div>
         </section>
@@ -483,6 +460,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=10"></script>
+    <script src="app.js?v=14"></script>
   </body>
 </html>

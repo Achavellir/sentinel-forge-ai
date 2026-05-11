@@ -5,7 +5,7 @@ Achavelli is a local-first personal assistant app for Mac and iPhone. It is buil
 ## Run
 
 ```bash
-python3 -m http.server 5173
+python3 server.py
 ```
 
 Then open:
@@ -22,7 +22,8 @@ http://localhost:5173
 - Voice-lock phrase gate before voice commands.
 - Job command center with resume profile, detailed resume-to-job match %, fit scoring, application packets, status counts, assessment/interview tracking, and CSV export.
 - Research paper blueprint generator.
-- Bug bounty analyzer with an authorization gate, document import, submission-rule extraction, likely findings, evidence extraction, severity, report drafts, mailto draft support, and remediation.
+- Bug bounty URL analyzer with an authorization gate, public program-page fetch, scope extraction, submission-rule extraction, payout/reward detection, likely bug-class prioritization, report drafts, mailto draft support, and remediation.
+- URL fetch backend for public bug bounty / VDP program pages, with private-network fetch blocking.
 - Permission toggles with cards and wallets locked.
 - Export to JSON.
 - PWA manifest and service worker.

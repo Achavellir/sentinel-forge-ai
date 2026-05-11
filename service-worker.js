@@ -1,9 +1,9 @@
-const CACHE_NAME = "achavelli-personal-assistant-v10";
+const CACHE_NAME = "achavelli-personal-assistant-v14";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=10",
-  "./app.js?v=10",
+  "./styles.css?v=14",
+  "./app.js?v=14",
   "./manifest.webmanifest",
   "./icons/astra.svg"
 ];

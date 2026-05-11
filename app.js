@@ -140,12 +140,7 @@ function cacheElements() {
     "saveResearch",
     "researchOutput",
     "researchSavedCount",
-    "programName",
-    "targetAsset",
-    "scopeNotes",
-    "bountyFile",
-    "submissionMethod",
-    "submissionTarget",
+    "programUrl",
     "scopeApproved",
     "assessSecurity",
     "saveSecurity",
@@ -230,19 +225,20 @@ function bindEvents() {
   elements.saveApplication.addEventListener("click", saveApplication);
   elements.exportJobs.addEventListener("click", exportJobsCsv);
 
-  elements.assessSecurity.addEventListener("click", () => {
-    const assessment = buildSecurityAssessment();
-    state.latestSecurity = assessment;
-    saveState();
-    renderSecurityOutput();
-    showToast("Bug findings ready");
-  });
-
-  elements.bountyFile.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    elements.scopeNotes.value = await file.text();
-    showToast("Document imported");
+  elements.assessSecurity.addEventListener("click", async () => {
+    elements.assessSecurity.disabled = true;
+    elements.assessSecurity.classList.add("is-loading");
+    showToast("Fetching program page");
+    try {
+      const assessment = await buildSecurityAssessment();
+      state.latestSecurity = assessment;
+      saveState();
+      renderSecurityOutput();
+      showToast("Program analyzed");
+    } finally {
+      elements.assessSecurity.disabled = false;
+      elements.assessSecurity.classList.remove("is-loading");
+    }
   });
 
   elements.saveSecurity.addEventListener("click", saveSecurityReport);
@@ -374,7 +370,7 @@ function renderNextMoves() {
     : [
         { title: "Research", body: "Save a doctorate topic and build the first blueprint." },
         { title: "Career", body: "Find a CPT-eligible cybersecurity role and keep the DSO approval path clean." },
-        { title: "Security", body: "Choose one authorized bounty program and document the scope." }
+        { title: "Security", body: "Paste one authorized bounty or VDP URL and extract scope, submission rules, payout info, and bug classes." }
       ];
 
   elements.nextMoves.innerHTML = moves
@@ -633,7 +629,7 @@ function composeReply(rawText) {
     return [
       "I can help with bug bounty work only inside authorized scope.",
       "The highest-value path is usually broken access control, IDOR, auth/session logic, exposed secrets, SSRF surfaces, unsafe file upload, cloud storage exposure, and business logic flaws.",
-      "Use Security Lab with the program name, target asset, and notes. I will give you a safe report plan and evidence checklist."
+      "Use Security with the official bounty or VDP URL. I will fetch the page, extract scope, payout language, submission rules, and bug classes to prioritize."
     ].join("\n\n");
   }
 
@@ -976,60 +972,84 @@ function saveResearchProject() {
   showToast("Research project saved");
 }
 
-function buildSecurityAssessment() {
-  const program = elements.programName.value.trim() || "Unspecified program";
-  const target = elements.targetAsset.value.trim() || "Unspecified target";
-  const notes = elements.scopeNotes.value.trim();
-  const submissionMethod = elements.submissionMethod.value;
-  const submissionTarget = elements.submissionTarget.value.trim();
+async function buildSecurityAssessment() {
+  const programUrl = elements.programUrl.value.trim();
   const authorized = elements.scopeApproved.checked;
-  const review = analyzeBountyDocument(`${target}\n${notes}`);
-  const rules = extractProgramRules(notes, submissionMethod, submissionTarget);
+  if (!programUrl) {
+    return `
+      <h3>Program URL Needed</h3>
+      <p>Paste the official bug bounty or VDP page URL first. Achavelli will fetch it and extract what they ask, how to submit, payout information, and bug classes to hunt.</p>
+    `;
+  }
+
+  const page = await fetchProgramPage(programUrl);
+  if (!page.ok) {
+    return `
+      <h3>Could Not Fetch Program Page</h3>
+      <p>${escapeHtml(page.error || "The local fetch service could not read this URL.")}</p>
+      <h3>What to do</h3>
+      <ul>
+        <li>Run this app with <code>python3 server.py</code>, not plain <code>python3 -m http.server</code>.</li>
+        <li>Make sure the URL is public, official, and starts with <code>https://</code>.</li>
+        <li>If the page requires login, open it manually and use the program portal instructions shown there.</li>
+      </ul>
+    `;
+  }
+
+  const program = page.title || inferProgramName(programUrl);
+  const target = page.finalUrl || programUrl;
+  const pageText = `${page.finalUrl}\n${page.title}\n${page.text}`;
+  const review = analyzeBountyDocument(pageText);
+  const rules = extractProgramRules(pageText, "unknown", "");
+  const rewards = extractRewardInfo(pageText);
+  const scope = extractScopeSummary(pageText);
+  const bugClasses = extractAcceptedBugClasses(pageText, review.findings);
+  const readabilityWarning = renderReadabilityWarning(page, rules, rewards, scope, bugClasses);
 
   if (!authorized) {
     return `
       <h3>Scope Gate</h3>
-      <p><strong>${escapeHtml(program)}</strong> is not marked as authorized yet. I can organize the document, but I will not label findings as actionable bounty submissions until authorized scope is confirmed.</p>
-      <h3>Document Signals Found</h3>
+      <p><strong>${escapeHtml(program)}</strong> was fetched, but you have not confirmed it is an official authorized bounty or VDP page.</p>
+      ${readabilityWarning}
+      <h3>What The Page Says</h3>
+      ${renderProgramSummary(target, rules, rewards, scope, bugClasses)}
+      <h3>Before Real Work</h3>
       <ul>
-        <li>Assets/endpoints detected: ${review.assets.length || 0}</li>
-        <li>Potential vulnerability areas: ${review.findings.length || 0}</li>
-        <li>Document length: ${notes.length.toLocaleString()} characters</li>
+        <li>Check the authorization checkbox only when this is the official program page.</li>
+        <li>Do not test anything outside the in-scope assets and rules.</li>
+        <li>Use the detected submission method below when you have evidence.</li>
       </ul>
-      <h3>Required Before Real Testing</h3>
-      <ul>
-        <li>Confirm this target is listed in a bug bounty or VDP scope.</li>
-        <li>Confirm allowed test methods, prohibited actions, rate limits, and report rules.</li>
-        <li>Use test accounts only where the program allows them.</li>
-      </ul>
-      <h3>Submission Rules Detected</h3>
-      ${renderSubmissionRules(rules)}
     `;
   }
 
   const findings = review.findings;
   return `
     <h3>${escapeHtml(program)}</h3>
-    <p><strong>Target:</strong> ${escapeHtml(target)}</p>
+    <p><strong>Program URL:</strong> ${escapeHtml(target)}</p>
     <div class="finding-summary">
-      <span>${findings.length} likely findings</span>
+      <span>${bugClasses.length} bug classes</span>
       <span>${review.assets.length} assets/endpoints</span>
-      <span>${review.highCount} high priority</span>
+      <span>${rewards.amounts.length ? rewards.amounts[0] : "Reward unknown"}</span>
     </div>
-    <h3>Likely Bugs From The Document</h3>
+    <h3>What They Ask / Program Rules</h3>
+    ${readabilityWarning}
+    ${renderProgramSummary(target, rules, rewards, scope, bugClasses)}
+    <h3>Bug Types To Hunt From This Page</h3>
     <div class="finding-list">
       ${findings.map(renderFinding).join("")}
     </div>
     <h3>Program Submission Workflow</h3>
     ${renderSubmissionWorkflow(program, target, findings, rules)}
+    <h3>Important Reality Check</h3>
+    <p>From the URL alone, Achavelli can tell you accepted bug classes, scope, payout information, and how to submit. It cannot honestly claim a confirmed vulnerability or guaranteed payout until you collect authorized evidence from the target.</p>
     <h3>Detected Assets And Endpoints</h3>
     <div class="keyword-pills">
-      ${review.assets.length ? review.assets.slice(0, 18).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("") : "<span>No concrete asset was detected. Add URLs, API paths, or endpoint names for stronger analysis.</span>"}
+      ${review.assets.length ? review.assets.slice(0, 18).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("") : "<span>The program page did not expose concrete assets or endpoints in the fetched text. Check the platform scope table manually before testing.</span>"}
     </div>
-    <h3>Documentation Needed Before Submission</h3>
+    <h3>What You Need Before Sending</h3>
     <ul>
       <li>Exact in-scope asset and program policy link.</li>
-      <li>Minimum safe reproduction steps using allowed test accounts.</li>
+      <li>Actual proof from authorized testing, not only the program page.</li>
       <li>Request and response evidence with tokens, cookies, and private data redacted.</li>
       <li>Clear impact: account takeover, cross-tenant data access, privilege escalation, data modification, or sensitive disclosure.</li>
       <li>Remediation tied to the root cause, not just the symptom.</li>
@@ -1037,18 +1057,16 @@ function buildSecurityAssessment() {
   `;
 }
 
-function saveSecurityReport() {
-  const program = elements.programName.value.trim() || "Untitled program";
-  const target = elements.targetAsset.value.trim();
-  const notes = elements.scopeNotes.value.trim();
-  const assessment = state.latestSecurity || buildSecurityAssessment();
+async function saveSecurityReport() {
+  const programUrl = elements.programUrl.value.trim();
+  const assessment = state.latestSecurity || await buildSecurityAssessment();
   state.reports.unshift({
     id: createId("report"),
-    program,
-    target,
-    notes,
-    submissionMethod: elements.submissionMethod.value,
-    submissionTarget: elements.submissionTarget.value.trim(),
+    program: inferProgramName(programUrl),
+    target: programUrl,
+    notes: "",
+    submissionMethod: "extracted-from-url",
+    submissionTarget: programUrl,
     authorized: elements.scopeApproved.checked,
     assessment,
     createdAt: new Date().toISOString()
@@ -1060,6 +1078,70 @@ function saveSecurityReport() {
   showToast("Security assessment saved");
 }
 
+async function fetchProgramPage(url) {
+  try {
+    const response = await fetch(`/api/fetch-program?url=${encodeURIComponent(url)}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      return { ok: false, error: payload.error || `Fetch failed with HTTP ${response.status}` };
+    }
+    return payload;
+  } catch {
+    return {
+      ok: false,
+      error: "The URL fetch backend is not running. Start the app with python3 server.py so Achavelli can read program URLs."
+    };
+  }
+}
+
+function inferProgramName(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, "");
+  } catch {
+    return "Bug bounty program";
+  }
+}
+
+function renderProgramSummary(target, rules, rewards, scope, bugClasses) {
+  return `
+    <div class="submission-panel">
+      <h4>How to submit</h4>
+      ${renderSubmissionRules(rules)}
+      <h4>Payout / reward info</h4>
+      <ul>
+        ${rewards.lines.length ? rewards.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("") : "<li>No exact payout range was detected on the page. Check the platform severity table before expecting payment.</li>"}
+      </ul>
+      <h4>Scope summary</h4>
+      <ul>
+        ${scope.length ? scope.map((line) => `<li>${escapeHtml(line)}</li>`).join("") : `<li>Review the page manually for exact in-scope and out-of-scope assets before testing ${escapeHtml(target)}.</li>`}
+      </ul>
+      <h4>Bug classes to prioritize</h4>
+      <div class="keyword-pills">
+        ${bugClasses.length ? bugClasses.map((item) => `<span>${escapeHtml(item)}</span>`).join("") : "<span>No explicit bug class list detected. Start with access control, auth/session, sensitive data exposure, and business logic if in scope.</span>"}
+      </div>
+    </div>
+  `;
+}
+
+function renderReadabilityWarning(page, rules, rewards, scope, bugClasses) {
+  const detailCount = rules.ruleLines.length + rewards.lines.length + scope.length + bugClasses.length;
+  const textLength = String(page.text || "").trim().length;
+  if (detailCount >= 4 && textLength >= 350) return "";
+
+  return `
+    <div class="submission-panel warning-panel">
+      <h4>URL reached, but details are limited</h4>
+      <p>The page was fetched, but it did not expose enough readable scope, reward, and rule text. Some platforms load the real program policy after sign-in or with JavaScript, so Achavelli cannot invent payout or bug details from an empty shell.</p>
+      <ul>
+        <li>If this is HackerOne, Bugcrowd, Intigriti, or YesWeHack, open the same URL while signed in and use the platform's official submit button.</li>
+        <li>Only treat detected payout text as valid when it appears directly on the official program page.</li>
+        <li>If the platform page shows a scope table that the fetcher cannot read, the next real upgrade is authenticated browser automation or an official platform API connector.</li>
+      </ul>
+    </div>
+  `;
+}
+
 function analyzeBountyDocument(input) {
   const raw = String(input || "");
   const lower = raw.toLowerCase();
@@ -1068,8 +1150,8 @@ function analyzeBountyDocument(input) {
     {
       title: "Broken access control / IDOR",
       severity: "High",
-      terms: ["user_id", "userid", "account", "tenant", "org", "invoice", "order", "profile", "uuid", "object id"],
-      patterns: [/user[_-]?id|account|tenant|org|invoice|order|profile|uuid|object id/i, /\/api\/(?:v\d+\/)?(?:users|accounts|orders|invoices|profiles|tenants)/i],
+      terms: ["user_id", "userid", "account", "tenant", "invoice", "order", "profile", "uuid", "object id", "org_id", "organization_id"],
+      patterns: [/user[_-]?id|account|tenant|invoice|order|profile|uuid|object id|org[_-]?id|organization[_-]?id/i, /\/api\/(?:v\d+\/)?(?:users|accounts|orders|invoices|profiles|tenants)/i],
       impact: "A user may access or modify another user, tenant, order, invoice, or profile object.",
       validation: "Use two allowed test accounts and verify whether changing only the object identifier crosses an authorization boundary.",
       remediation: "Enforce server-side object ownership and role checks on every read and write."
@@ -1113,7 +1195,7 @@ function analyzeBountyDocument(input) {
     {
       title: "SSRF, unsafe URL fetch, or open redirect",
       severity: "High",
-      terms: ["webhook", "callback", "url", "redirect", "next", "return_url", "fetch", "import from url"],
+      terms: ["webhook", "callback", "redirect", "next", "return_url", "fetch", "import from url"],
       patterns: [/webhook|callback|return_url|redirect|next=|url=|fetch|import from url|metadata/i, /\/(?:webhook|callback|redirect|fetch|import)/i],
       impact: "User-controlled URLs may trigger server-side requests, credential leakage, or unsafe redirects.",
       validation: "Stay within the program rules and verify URL allowlisting, redirect handling, and internal-host blocking.",
@@ -1169,8 +1251,8 @@ function analyzeBountyDocument(input) {
           title: "Insufficient evidence for a concrete bug",
           severity: "Info",
           confidence: 35,
-          impact: "The pasted document does not contain enough endpoint, role, parameter, or response evidence to identify a likely vulnerability.",
-          evidence: ["Paste scope, endpoint paths, parameters, roles, request/response notes, and observed behavior for stronger results."],
+          impact: "The program page does not contain enough endpoint, role, parameter, or response detail to identify a likely vulnerability class.",
+          evidence: ["Use the program scope table and authorized testing evidence before treating this as a bounty submission."],
           validation: "Collect the affected asset, role, endpoint, expected behavior, actual behavior, and safe reproduction steps.",
           remediation: "Not applicable until a concrete issue is identified.",
           report: "This is a documentation gap, not a bounty submission yet."
@@ -1197,7 +1279,7 @@ function buildBountyFinding(signature, lower, raw, assets) {
     severity: confidence >= 78 && signature.severity === "High" ? "High" : signature.severity,
     confidence,
     impact: signature.impact,
-    evidence: evidence.length ? evidence : [`Document mentions: ${termHits.slice(0, 6).join(", ")}`],
+    evidence: evidence.length ? evidence : [`Program page mentions: ${termHits.slice(0, 6).join(", ")}`],
     validation: signature.validation,
     remediation: signature.remediation,
     report: `Potential ${signature.title.toLowerCase()} in the authorized target. Evidence should prove affected endpoint, role, expected behavior, actual behavior, and impact.`
@@ -1214,7 +1296,7 @@ function renderFinding(finding) {
         </div>
         <span class="severity-badge ${finding.severity.toLowerCase()}">${escapeHtml(finding.severity)}</span>
       </header>
-      <h4>Evidence pulled from document</h4>
+      <h4>Evidence pulled from program page</h4>
       <ul>
         ${finding.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
       </ul>
@@ -1230,6 +1312,47 @@ function renderFinding(finding) {
   `;
 }
 
+function extractRewardInfo(input) {
+  const raw = String(input || "");
+  const moneyMatches = raw.match(/(?:\$|USD\s*)\s?\d[\d,]*(?:\s?-\s?(?:\$|USD\s*)?\d[\d,]*)?/gi) || [];
+  const rewardLines = extractPolicyLines(raw)
+    .filter((line) => /(?:\$|usd|\breward\b|\bpayout\b|\bpaid\b|bounty amount|reward range|severity table|eligible for bounty)/i.test(line))
+    .filter((line) => !/(enlists the help|hacker-powered security platform)/i.test(line))
+    .slice(0, 10);
+  return {
+    amounts: unique(moneyMatches.map((amount) => amount.replace(/\s+/g, " "))).slice(0, 8),
+    lines: rewardLines
+  };
+}
+
+function extractScopeSummary(input) {
+  return extractPolicyLines(input)
+    .filter((line) => /(in scope|out of scope|scope|eligible|not eligible|asset|domain|wildcard|mobile|api|do not|prohibited|safe harbor|rate limit)/i.test(line))
+    .filter((line) => !/(enlists the help|hacker-powered security platform)/i.test(line))
+    .slice(0, 12);
+}
+
+function extractAcceptedBugClasses(input, findings) {
+  const text = String(input || "").toLowerCase();
+  const classes = [
+    ["IDOR / broken access control", /idor|broken access|access control|authorization|object reference/],
+    ["Account takeover", /account takeover|ato|password reset|session fixation|oauth|mfa|otp/],
+    ["Privilege escalation", /privilege escalation|admin|role|permission/],
+    ["Sensitive data exposure", /sensitive data|information disclosure|pii|token|secret|api key/],
+    ["Stored or reflected XSS", /xss|cross-site scripting|stored xss|reflected xss/],
+    ["SSRF / unsafe URL fetch", /ssrf|server-side request|webhook|metadata|open redirect|redirect/],
+    ["SQL / command injection", /sql injection|sqli|command injection|rce|remote code execution/],
+    ["File upload issues", /file upload|unrestricted upload|avatar|attachment|svg/],
+    ["Business logic abuse", /business logic|rate limit|coupon|payment|invite|trial/],
+    ["Cloud storage exposure", /s3|bucket|firebase|blob storage|cloudfront/]
+  ];
+  const explicit = classes.filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
+  const inferred = findings
+    .filter((finding) => finding.severity !== "Info")
+    .map((finding) => finding.title);
+  return unique([...explicit, ...inferred]).slice(0, 12);
+}
+
 function extractProgramRules(input, selectedMethod, selectedTarget) {
   const raw = String(input || "");
   const emailMatch = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
@@ -1243,10 +1366,9 @@ function extractProgramRules(input, selectedMethod, selectedTarget) {
           ? "email"
           : "unknown";
   const target = selectedTarget || reportUrl || emailMatch?.[0] || "";
-  const ruleLines = raw
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => /(submit|report|email|send|disclosure|scope|out of scope|prohibited|do not|rate|bounty|reward|severity|impact|safe harbor)/i.test(line))
+  const ruleLines = extractPolicyLines(raw)
+    .filter((line) => /(submit|report|email|send|disclosure|scope|out of scope|prohibited|do not|rate|reward|payout|severity table|impact|safe harbor|eligible|not eligible)/i.test(line))
+    .filter((line) => !/(enlists the help|hacker-powered security platform)/i.test(line))
     .slice(0, 8);
 
   return {
@@ -1256,6 +1378,13 @@ function extractProgramRules(input, selectedMethod, selectedTarget) {
     reportUrl: method !== "email" ? target || reportUrl || "" : reportUrl || "",
     ruleLines
   };
+}
+
+function extractPolicyLines(input) {
+  return String(input || "")
+    .split(/\n+|(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 14 && line.length < 360);
 }
 
 function renderSubmissionRules(rules) {

@@ -1,27 +1,32 @@
-# Sentinel Forge AI
+# Achavelli Personal Assistant
 
-Sentinel Forge AI is a defensive cybersecurity AI project that runs entirely in the browser. It ingests security telemetry, extracts suspicious behavior signals, correlates events into incidents, explains why each incident matters, maps evidence to MITRE-style tactics, and generates response playbooks.
+Achavelli is a local-first personal assistant app for Mac and iPhone. It is built as a progressive web app with an Apple-style interface, local storage, voice input where the browser supports it, a doctorate research desk, and an authorized-scope bug bounty lab.
 
-## What it does
+## Run
 
-- Parses JSON arrays, JSONL-style logs, or raw pasted security lines.
-- Scores events with a local explainable triage engine.
-- Correlates identity, endpoint, network, and cloud signals into incidents.
-- Builds an attack-path graph for the highest-risk chain.
-- Provides a case-aware co-pilot for summaries, containment, blast radius, and evidence preservation.
-- Exports a JSON incident report for handoff.
+```bash
+python3 -m http.server 5173
+```
 
-## How to run
+Then open:
 
-Open `index.html` in a browser. No package install is required.
+```text
+http://localhost:5173
+```
 
-## Safe-use note
+## Current version
 
-This project is defensive by design. It does not exploit systems, scan targets, collect credentials, or provide offensive automation. Its purpose is security monitoring, triage, and incident response practice.
+- Command stack for priorities.
+- Quick capture and memory.
+- Chat-style assistant with local planning logic.
+- Voice-lock phrase gate before voice commands.
+- Job command center with resume profile, detailed resume-to-job match %, fit scoring, application packets, status counts, assessment/interview tracking, and CSV export.
+- Research paper blueprint generator.
+- Bug bounty assessment helper with an authorization gate.
+- Permission toggles with cards and wallets locked.
+- Export to JSON.
+- PWA manifest and service worker.
 
-## Suggested next upgrades
+## Next build step
 
-- Add a backend connector for SIEM sources such as Splunk, Elastic, Sentinel, or Chronicle.
-- Connect an approved LLM API for richer natural-language summaries.
-- Store historical baselines per user, host, and destination.
-- Add analyst case management and ticket export.
+Add a private backend for real AI model calls, biometric speaker verification, account authentication, encrypted cloud sync, Gmail/Calendar/Drive connectors, and native iOS/macOS wrappers.

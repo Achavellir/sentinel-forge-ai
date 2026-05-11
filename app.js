@@ -1,323 +1,1358 @@
-const state = {
-  rawEvents: [],
-  events: [],
-  incidents: [],
-  selectedIncidentId: null,
-  topSignals: [],
-  confidence: 0,
-  coverage: [],
-  sensitivity: 72,
-  correlationHours: 6,
-  modes: {
-    identity: true,
-    endpoint: true,
-    network: true,
-    cloud: true
-  }
-};
+const STORAGE_KEY = "achavelli.personal.assistant.v1";
+const LEGACY_STORAGE_KEY = "astra.personal.assistant.v1";
+const APP_NAME = "Achavelli";
 
-const severityBase = {
-  low: 10,
-  medium: 28,
-  high: 52,
-  critical: 74
-};
-
-const modeMap = {
-  identity: ["identity", "auth.failure", "auth.success", "privilege.change"],
-  endpoint: ["endpoint", "process.start", "credential.access"],
-  network: ["network", "dns.query", "egress.spike"],
-  cloud: ["cloud", "data.access", "config.change", "privilege.change"]
-};
-
-const signalLibrary = [
-  {
-    id: "brute_force_success",
-    label: "Failed logins followed by success",
-    tactic: "Credential Access",
-    technique: "Valid Accounts",
-    mode: "identity",
-    weight: 22,
-    test: (event, ctx) =>
-      event.event_type === "auth.success" && ctx.failuresByUser.get(event.user || "") >= 3
+const defaultState = {
+  profile: {
+    name: "Achavelli",
+    school: "Belhaven University",
+    goal: "Finish the doctorate, build a cybersecurity career path, and protect F-1 status while creating authorized income."
   },
-  {
-    id: "unfamiliar_geo",
-    label: "Unfamiliar country or ASN",
-    tactic: "Initial Access",
-    technique: "External Remote Services",
-    mode: "identity",
-    weight: 16,
-    test: (event) => Boolean(event.country && event.country !== "US")
+  permissions: {
+    email: false,
+    calendar: false,
+    drive: false,
+    files: false,
+    browser: false,
+    github: false,
+    cards: false,
+    wallets: false
   },
-  {
-    id: "privilege_escalation",
-    label: "Privilege or group escalation",
-    tactic: "Privilege Escalation",
-    technique: "Account Manipulation",
-    mode: "cloud",
-    weight: 25,
-    test: (event) =>
-      /privilege|admin|group|role|policy|break-glass/i.test(
-        `${event.event_type || ""} ${event.message || ""}`
-      )
-  },
-  {
-    id: "encoded_shell",
-    label: "Encoded shell execution",
-    tactic: "Execution",
-    technique: "Command and Scripting Interpreter",
-    mode: "endpoint",
-    weight: 25,
-    test: (event) => /powershell|pwsh|cmd|bash|zsh/i.test(event.process || event.command || "") &&
-      /-enc|-encodedcommand|base64|frombase64/i.test(`${event.command || ""} ${event.message || ""}`)
-  },
-  {
-    id: "credential_dump",
-    label: "Credential dump behavior",
-    tactic: "Credential Access",
-    technique: "OS Credential Dumping",
-    mode: "endpoint",
-    weight: 28,
-    test: (event) => /lsass|sam|ntds|credential|dump|comsvcs/i.test(
-      `${event.event_type || ""} ${event.command || ""} ${event.message || ""}`
-    )
-  },
-  {
-    id: "beaconing",
-    label: "Repeated beacon-like network cadence",
-    tactic: "Command and Control",
-    technique: "Application Layer Protocol",
-    mode: "network",
-    weight: 20,
-    test: (event, ctx) => ctx.destCounts.get(event.dest || "") >= 3
-  },
-  {
-    id: "new_domain",
-    label: "New or suspicious external domain",
-    tactic: "Command and Control",
-    technique: "Dynamic Resolution",
-    mode: "network",
-    weight: 13,
-    test: (event) => /newly observed|entropy|cdn|sync|update|cloud/i.test(
-      `${event.dest || ""} ${event.message || ""}`
-    )
-  },
-  {
-    id: "data_exfiltration",
-    label: "Large data access or egress spike",
-    tactic: "Exfiltration",
-    technique: "Exfiltration Over Web Service",
-    mode: "cloud",
-    weight: 30,
-    test: (event) => Number(event.bytes_out || 0) > 100_000_000 ||
-      /large download|egress|exfil|transfer volume|restricted/i.test(`${event.event_type || ""} ${event.message || ""}`)
-  },
-  {
-    id: "risky_exposure",
-    label: "Risky public exposure change",
-    tactic: "Defense Evasion",
-    technique: "Impair Defenses",
-    mode: "cloud",
-    weight: 18,
-    test: (event) => /0\.0\.0\.0\/0|public|firewall|port 22|security group/i.test(
-      `${event.message || ""} ${event.object || ""}`
-    )
-  }
-];
-
-const incidentPatterns = [
-  {
-    id: "account_takeover_exfil",
-    title: "Probable account takeover with data exfiltration",
-    requiredSignals: ["brute_force_success", "privilege_escalation", "data_exfiltration"],
-    stage: "Identity compromise to cloud data theft",
-    priority: 96,
-    playbook: "Account takeover and exfiltration containment"
-  },
-  {
-    id: "endpoint_credential_chain",
-    title: "Endpoint execution with credential theft behavior",
-    requiredSignals: ["encoded_shell", "credential_dump", "beaconing"],
-    stage: "Execution to command and control",
-    priority: 91,
-    playbook: "Endpoint isolation and credential reset"
-  },
-  {
-    id: "cloud_exposure",
-    title: "Cloud control-plane exposure requiring validation",
-    requiredSignals: ["risky_exposure"],
-    stage: "Cloud misconfiguration",
-    priority: 66,
-    playbook: "Cloud exposure rollback and audit"
-  }
-];
-
-const playbookTemplates = {
-  "Account takeover and exfiltration containment": [
-    "Disable or step-up challenge the affected identity while preserving sign-in logs.",
-    "Revoke sessions, rotate refresh tokens, and reset privileged credentials.",
-    "Freeze high-risk cloud access paths and snapshot relevant audit trails.",
-    "Identify accessed objects, affected data classes, and external destinations.",
-    "Notify legal, privacy, and incident leadership if regulated data is involved."
+  tasks: [
+    { id: createId("task"), text: "Confirm any CPT work in writing with Belhaven DSO before starting.", done: false },
+    { id: createId("task"), text: "Apply to 5 cybersecurity CPT internship roles this week.", done: false },
+    { id: createId("task"), text: "Draft one doctorate research question and save it in Research Desk.", done: false },
+    { id: createId("task"), text: "Pick one authorized bug bounty program and read the scope carefully.", done: false }
   ],
-  "Endpoint isolation and credential reset": [
-    "Isolate the endpoint using EDR network containment.",
-    "Collect process tree, command line, memory artifacts, and DNS history.",
-    "Reset credentials used on the host, prioritizing administrators and service accounts.",
-    "Block observed command-and-control destinations at DNS and egress controls.",
-    "Reimage only after evidence acquisition and scoping are complete."
+  memories: [
+    {
+      id: createId("mem"),
+      text: "Payment cards and wallets stay blocked unless explicitly redesigned with legal and security review.",
+      createdAt: new Date().toISOString()
+    }
   ],
-  "Cloud exposure rollback and audit": [
-    "Validate whether the exposure was approved and time-bound.",
-    "Rollback broad ingress or privileged policy changes if approval is absent.",
-    "Compare the changed resource against infrastructure-as-code state.",
-    "Review access logs for connection attempts during the exposure window.",
-    "Add preventive guardrails for public ingress and privilege drift."
+  projects: [],
+  reports: [],
+  career: {
+    resumeText:
+      "Master's in Cybersecurity from Webster University. Pursuing doctorate at Belhaven University. Cybersecurity interests include SOC analysis, vulnerability management, GRC, application security, cloud security, bug bounty research, and AI-assisted security operations.",
+    targetRoles: "Cybersecurity intern, SOC analyst intern, GRC intern, vulnerability management intern, application security intern, cloud security intern",
+    workAuthNotes:
+      "F-1 student. CPT authorization must be approved on I-20 before any off-campus work starts. Role should be directly related to cybersecurity studies.",
+    applications: []
+  },
+  chat: [
+    {
+      role: "assistant",
+      text: "Achavelli is ready. I can help organize your day, shape doctorate research, keep bug bounty work inside authorized scope, and remember the important details you save here."
+    }
   ],
-  "General high-risk telemetry review": [
-    "Assign an analyst and preserve original telemetry.",
-    "Confirm asset ownership, user legitimacy, and change window context.",
-    "Hunt for matching indicators across identity, endpoint, network, and cloud logs.",
-    "Document decisions and downgrade only when benign context is proven."
-  ]
+  voiceLock: {
+    enabled: true,
+    phrase: "achavelli unlock",
+    voiceprint: null,
+    lastScore: null,
+    unlockedUntil: 0
+  },
+  latestResearch: "",
+  latestSecurity: "",
+  latestJobPacket: ""
 };
 
+let state = loadState();
 const elements = {};
+const viewTitles = {
+  today: "Good morning, Achavelli",
+  ask: "Ask Achavelli",
+  research: "Research Desk",
+  jobs: "Job Command Center",
+  security: "Bug Bounty Lab",
+  memory: "Memory and Permissions"
+};
+
+const permissionMeta = [
+  ["email", "Email", "Drafts and inbox context"],
+  ["calendar", "Calendar", "Deadlines and appointments"],
+  ["drive", "Drive", "Documents and PDFs"],
+  ["files", "Mac files", "Local research folders"],
+  ["browser", "Browser", "Approved web actions"],
+  ["github", "GitHub", "Code and security reports"],
+  ["cards", "Cards", "Locked"],
+  ["wallets", "Wallets", "Locked"]
+];
 
 document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
   bindEvents();
-  seedChat();
-  paintEmptyTimeline();
+  renderAll();
+  registerServiceWorker();
   refreshIcons();
 });
 
 function cacheElements() {
   [
-    "eventInput",
-    "fileInput",
-    "dropZone",
-    "loadSample",
-    "clearInput",
-    "runAnalysis",
-    "sensitivity",
-    "sensitivityValue",
-    "correlation",
-    "correlationValue",
-    "modeIdentity",
-    "modeEndpoint",
-    "modeNetwork",
-    "modeCloud",
-    "criticalCount",
-    "criticalDelta",
-    "incidentCount",
-    "confidenceScore",
-    "coverageScore",
-    "timelineCaption",
-    "timelineCanvas",
-    "aiVerdict",
-    "signalList",
-    "incidentList",
-    "incidentSummary",
-    "incidentInspector",
-    "attackGraph",
-    "graphCaption",
+    "dateLine",
+    "viewTitle",
+    "voiceButton",
+    "exportButton",
+    "focusCount",
+    "projectCount",
+    "jobCount",
+    "jobsTotalCount",
+    "jobsAppliedCount",
+    "jobsPendingCount",
+    "jobsRejectedCount",
+    "jobsAssessmentCount",
+    "jobsInterviewCount",
+    "resumeText",
+    "targetRoles",
+    "workAuthNotes",
+    "saveCareerProfile",
+    "jobCompany",
+    "jobRole",
+    "jobLink",
+    "jobStatus",
+    "jobDate",
+    "jobNextStep",
+    "jobDescription",
+    "analyzeJob",
+    "saveApplication",
+    "jobOutput",
+    "applicationList",
+    "exportJobs",
+    "taskList",
+    "taskForm",
+    "taskInput",
+    "quickCapture",
+    "saveCapture",
+    "nextMoves",
+    "nextMoveStamp",
     "chatLog",
     "chatForm",
     "chatInput",
-    "playbookList",
-    "playbookCaption",
-    "exportReport"
+    "researchTopic",
+    "researchQuestion",
+    "researchNotes",
+    "buildResearch",
+    "saveResearch",
+    "researchOutput",
+    "researchSavedCount",
+    "programName",
+    "targetAsset",
+    "scopeNotes",
+    "scopeApproved",
+    "assessSecurity",
+    "saveSecurity",
+    "securityOutput",
+    "securitySavedCount",
+    "profileName",
+    "profileSchool",
+    "profileGoal",
+    "saveProfile",
+    "voiceLockEnabled",
+    "unlockPhrase",
+    "voiceLockStatus",
+    "saveVoiceLock",
+    "enrollVoice",
+    "permissionList",
+    "memoryList",
+    "memoryCount",
+    "toast"
   ].forEach((id) => {
     elements[id] = document.getElementById(id);
   });
 }
 
 function bindEvents() {
-  elements.loadSample.addEventListener("click", () => {
-    elements.eventInput.value = JSON.stringify(window.SENTINEL_SAMPLE_EVENTS, null, 2);
-    runAnalysis();
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.addEventListener("click", () => showView(button.dataset.view));
   });
 
-  elements.clearInput.addEventListener("click", () => {
-    elements.eventInput.value = "";
-    resetState();
-    renderAll();
+  document.querySelectorAll(".command-chip").forEach((button) => {
+    button.addEventListener("click", () => handleCommand(button.dataset.command));
   });
 
-  elements.runAnalysis.addEventListener("click", runAnalysis);
-
-  elements.sensitivity.addEventListener("input", (event) => {
-    state.sensitivity = Number(event.target.value);
-    elements.sensitivityValue.textContent = state.sensitivity;
-  });
-
-  elements.correlation.addEventListener("input", (event) => {
-    state.correlationHours = Number(event.target.value);
-    elements.correlationValue.textContent = `${state.correlationHours}h`;
-  });
-
-  [
-    ["modeIdentity", "identity"],
-    ["modeEndpoint", "endpoint"],
-    ["modeNetwork", "network"],
-    ["modeCloud", "cloud"]
-  ].forEach(([id, mode]) => {
-    elements[id].addEventListener("change", (event) => {
-      state.modes[mode] = event.target.checked;
-    });
-  });
-
-  document.querySelectorAll(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => switchTab(tab.dataset.tab));
-  });
-
-  elements.dropZone.addEventListener("dragover", (event) => {
+  elements.taskForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    elements.dropZone.classList.add("dragging");
+    addTask(elements.taskInput.value.trim());
+    elements.taskInput.value = "";
   });
 
-  elements.dropZone.addEventListener("dragleave", () => {
-    elements.dropZone.classList.remove("dragging");
-  });
-
-  elements.dropZone.addEventListener("drop", async (event) => {
-    event.preventDefault();
-    elements.dropZone.classList.remove("dragging");
-    const file = event.dataTransfer.files?.[0];
-    if (file) {
-      elements.eventInput.value = await file.text();
-      runAnalysis();
+  elements.saveCapture.addEventListener("click", () => {
+    const text = elements.quickCapture.value.trim();
+    if (!text) return;
+    addMemory(text);
+    if (/^(task|todo|priority):/i.test(text)) {
+      addTask(text.replace(/^(task|todo|priority):/i, "").trim());
     }
-  });
-
-  elements.fileInput.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      elements.eventInput.value = await file.text();
-      runAnalysis();
-    }
+    elements.quickCapture.value = "";
+    showToast("Saved to memory");
   });
 
   elements.chatForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const prompt = elements.chatInput.value.trim();
-    if (!prompt) return;
-    addChat("user", prompt);
+    sendMessage(elements.chatInput.value.trim());
     elements.chatInput.value = "";
-    addChat("ai", answerQuestion(prompt));
   });
 
-  document.querySelectorAll(".prompt-chip").forEach((button) => {
-    button.addEventListener("click", () => {
-      const prompt = button.textContent.trim();
-      addChat("user", prompt);
-      addChat("ai", answerQuestion(prompt));
+  elements.buildResearch.addEventListener("click", () => {
+    const blueprint = buildResearchBlueprint();
+    state.latestResearch = blueprint;
+    saveState();
+    renderResearchOutput();
+    showToast("Blueprint built");
+  });
+
+  elements.saveResearch.addEventListener("click", saveResearchProject);
+
+  elements.saveCareerProfile.addEventListener("click", saveCareerProfile);
+  elements.analyzeJob.addEventListener("click", () => {
+    state.latestJobPacket = buildJobPacket();
+    saveState();
+    renderJobOutput();
+    showToast("Application packet ready");
+  });
+  elements.saveApplication.addEventListener("click", saveApplication);
+  elements.exportJobs.addEventListener("click", exportJobsCsv);
+
+  elements.assessSecurity.addEventListener("click", () => {
+    const assessment = buildSecurityAssessment();
+    state.latestSecurity = assessment;
+    saveState();
+    renderSecurityOutput();
+    showToast("Assessment ready");
+  });
+
+  elements.saveSecurity.addEventListener("click", saveSecurityReport);
+
+  elements.saveProfile.addEventListener("click", () => {
+    state.profile.name = elements.profileName.value.trim() || APP_NAME;
+    state.profile.school = elements.profileSchool.value.trim() || "Belhaven University";
+    state.profile.goal = elements.profileGoal.value.trim() || state.profile.goal;
+    saveState();
+    renderHeader();
+    renderProfile();
+    showToast("Profile saved");
+  });
+
+  elements.saveVoiceLock.addEventListener("click", () => {
+    const phrase = normalizePhrase(elements.unlockPhrase.value);
+    state.voiceLock.enabled = elements.voiceLockEnabled.checked;
+    state.voiceLock.phrase = phrase || "achavelli unlock";
+    state.voiceLock.unlockedUntil = 0;
+    saveState();
+    renderVoiceLock();
+    showToast("Voice lock saved");
+  });
+
+  elements.enrollVoice.addEventListener("click", enrollVoiceprint);
+
+  elements.exportButton.addEventListener("click", exportData);
+  elements.voiceButton.addEventListener("click", startVoiceInput);
+}
+
+function showView(view) {
+  document.querySelectorAll(".view").forEach((section) => {
+    section.classList.toggle("active", section.id === view);
+  });
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === view);
+  });
+  elements.viewTitle.textContent = viewTitles[view] || APP_NAME;
+  refreshIcons();
+}
+
+function renderAll() {
+  renderHeader();
+  renderTasks();
+  renderNextMoves();
+  renderChat();
+  renderResearchOutput();
+  renderCareer();
+  renderJobMetrics();
+  renderJobOutput();
+  renderApplicationList();
+  renderSecurityOutput();
+  renderProfile();
+  renderVoiceLock();
+  renderPermissions();
+  renderMemory();
+  refreshIcons();
+}
+
+function renderHeader() {
+  const now = new Date();
+  elements.dateLine.textContent = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric"
+  }).format(now);
+  const activeView = document.querySelector(".view.active")?.id || "today";
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  viewTitles.today = `${greeting}, ${state.profile.name || APP_NAME}`;
+  elements.viewTitle.textContent = viewTitles[activeView] || viewTitles.today;
+  elements.focusCount.textContent = state.tasks.filter((task) => !task.done).length;
+  elements.projectCount.textContent = state.projects.length;
+  elements.jobCount.textContent = state.career.applications.length;
+  elements.researchSavedCount.textContent = `${state.projects.length} saved`;
+  elements.securitySavedCount.textContent = `${state.reports.length} saved`;
+}
+
+function renderTasks() {
+  if (!state.tasks.length) {
+    elements.taskList.innerHTML = `<div class="empty-state">No priorities yet.</div>`;
+    return;
+  }
+
+  elements.taskList.innerHTML = state.tasks
+    .map(
+      (task) => `
+        <label class="task-item ${task.done ? "completed" : ""}">
+          <input type="checkbox" data-task-toggle="${task.id}" ${task.done ? "checked" : ""} />
+          <span>${escapeHtml(task.text)}</span>
+          <button class="icon-button list-action" data-task-delete="${task.id}" type="button" aria-label="Delete priority">
+            <i data-lucide="x"></i>
+          </button>
+        </label>
+      `
+    )
+    .join("");
+
+  elements.taskList.querySelectorAll("[data-task-toggle]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const task = state.tasks.find((item) => item.id === input.dataset.taskToggle);
+      if (task) task.done = input.checked;
+      saveState();
+      renderTasks();
+      renderHeader();
+      renderNextMoves();
     });
   });
 
-  elements.exportReport.addEventListener("click", exportReport);
+  elements.taskList.querySelectorAll("[data-task-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.tasks = state.tasks.filter((task) => task.id !== button.dataset.taskDelete);
+      saveState();
+      renderTasks();
+      renderHeader();
+      renderNextMoves();
+    });
+  });
+  refreshIcons();
+}
+
+function renderNextMoves() {
+  const openTasks = state.tasks.filter((task) => !task.done).slice(0, 3);
+  const moves = openTasks.length
+    ? openTasks.map((task, index) => ({
+        title: index === 0 ? "Start here" : index === 1 ? "Then" : "After that",
+        body: task.text
+      }))
+    : [
+        { title: "Research", body: "Save a doctorate topic and build the first blueprint." },
+        { title: "Career", body: "Find a CPT-eligible cybersecurity role and keep the DSO approval path clean." },
+        { title: "Security", body: "Choose one authorized bounty program and document the scope." }
+      ];
+
+  elements.nextMoves.innerHTML = moves
+    .map(
+      (move) => `
+        <article class="move-card">
+          <strong>${escapeHtml(move.title)}</strong>
+          <p>${escapeHtml(move.body)}</p>
+        </article>
+      `
+    )
+    .join("");
+  elements.nextMoveStamp.textContent = `Updated ${new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date())}`;
+}
+
+function renderChat() {
+  elements.chatLog.innerHTML = state.chat
+    .map(
+      (message) => `
+        <div class="chat-message ${message.role}">
+          <div class="chat-avatar">
+            <i data-lucide="${message.role === "assistant" ? "sparkles" : "user"}"></i>
+          </div>
+          <div class="chat-bubble">${formatAssistantText(message.text)}</div>
+        </div>
+      `
+    )
+    .join("");
+  elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
+  refreshIcons();
+}
+
+function renderResearchOutput() {
+  const hasOutput = Boolean(state.latestResearch);
+  elements.researchOutput.classList.toggle("empty-state", !hasOutput);
+  elements.researchOutput.innerHTML = hasOutput ? state.latestResearch : "No blueprint yet.";
+  elements.researchSavedCount.textContent = `${state.projects.length} saved`;
+}
+
+function renderCareer() {
+  elements.resumeText.value = state.career.resumeText || "";
+  elements.targetRoles.value = state.career.targetRoles || "";
+  elements.workAuthNotes.value = state.career.workAuthNotes || "";
+  if (!elements.jobDate.value) {
+    elements.jobDate.value = new Date().toISOString().slice(0, 10);
+  }
+}
+
+function renderJobMetrics() {
+  const counts = countApplications();
+  elements.jobsTotalCount.textContent = counts.total;
+  elements.jobsAppliedCount.textContent = counts.applied;
+  elements.jobsPendingCount.textContent = counts.pending;
+  elements.jobsRejectedCount.textContent = counts.rejected;
+  elements.jobsAssessmentCount.textContent = counts.assessment;
+  elements.jobsInterviewCount.textContent = counts.interview;
+}
+
+function renderJobOutput() {
+  const hasOutput = Boolean(state.latestJobPacket);
+  elements.jobOutput.classList.toggle("empty-state", !hasOutput);
+  elements.jobOutput.innerHTML = hasOutput ? state.latestJobPacket : "No job analyzed yet.";
+}
+
+function renderApplicationList() {
+  const applications = state.career.applications || [];
+  if (!applications.length) {
+    elements.applicationList.innerHTML = `<div class="empty-state">No applications tracked yet.</div>`;
+    return;
+  }
+
+  elements.applicationList.innerHTML = applications
+    .map(
+      (application) => `
+        <article class="application-card">
+          <header>
+            <div>
+              <strong>${escapeHtml(application.role || "Untitled role")}</strong>
+              <span>${escapeHtml(application.company || "Unknown company")}</span>
+            </div>
+            <span class="status-badge ${application.status}">${formatStatus(application.status)}</span>
+          </header>
+          <div class="application-meta">
+            <span>${escapeHtml(application.date || "No date")}</span>
+            <span>Fit ${application.fitScore ?? 0}%</span>
+          </div>
+          <p>${escapeHtml(application.nextStep || "No next step saved.")}</p>
+          <div class="application-actions">
+            ${application.link ? `<a href="${escapeHtml(application.link)}" target="_blank" rel="noreferrer">Open job</a>` : ""}
+            <button class="quiet-button small-button" data-application-copy="${application.id}" type="button">
+              <i data-lucide="copy"></i>
+              Packet
+            </button>
+            <button class="icon-button list-action" data-application-delete="${application.id}" type="button" aria-label="Delete application">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+
+  elements.applicationList.querySelectorAll("[data-application-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.career.applications = state.career.applications.filter((item) => item.id !== button.dataset.applicationDelete);
+      saveState();
+      renderHeader();
+      renderJobMetrics();
+      renderApplicationList();
+    });
+  });
+
+  elements.applicationList.querySelectorAll("[data-application-copy]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const application = state.career.applications.find((item) => item.id === button.dataset.applicationCopy);
+      if (!application) return;
+      await navigator.clipboard?.writeText(stripHtml(application.packet || ""));
+      showToast("Application packet copied");
+    });
+  });
+  refreshIcons();
+}
+
+function renderSecurityOutput() {
+  const hasOutput = Boolean(state.latestSecurity);
+  elements.securityOutput.classList.toggle("empty-state", !hasOutput);
+  elements.securityOutput.innerHTML = hasOutput ? state.latestSecurity : "No assessment yet.";
+  elements.securitySavedCount.textContent = `${state.reports.length} saved`;
+}
+
+function renderProfile() {
+  elements.profileName.value = state.profile.name || "";
+  elements.profileSchool.value = state.profile.school || "";
+  elements.profileGoal.value = state.profile.goal || "";
+}
+
+function renderVoiceLock() {
+  elements.voiceLockEnabled.checked = Boolean(state.voiceLock.enabled);
+  elements.unlockPhrase.value = state.voiceLock.phrase || "achavelli unlock";
+  const isUnlocked = voiceIsUnlocked();
+  const status = state.voiceLock.enabled
+    ? isUnlocked
+      ? "Voice commands are unlocked for this device for a few minutes."
+      : state.voiceLock.voiceprint
+        ? `Say the exact unlock phrase. Voiceprint match is active${state.voiceLock.lastScore ? `, last match ${Math.round(state.voiceLock.lastScore * 100)}%` : ""}.`
+        : "Say the exact unlock phrase. Enroll your voice to add a local voiceprint check."
+    : "Voice commands are not gated by the unlock phrase.";
+  elements.voiceLockStatus.textContent = status;
+}
+
+function renderPermissions() {
+  elements.permissionList.innerHTML = permissionMeta
+    .map(([key, label, description]) => {
+      const locked = key === "cards" || key === "wallets";
+      const checked = locked ? false : Boolean(state.permissions[key]);
+      return `
+        <label class="permission-row ${locked ? "locked" : ""}">
+          <div>
+            <strong>${label}</strong>
+            <span>${description}</span>
+          </div>
+          <input type="checkbox" data-permission="${key}" ${checked ? "checked" : ""} ${locked ? "disabled" : ""} />
+        </label>
+      `;
+    })
+    .join("");
+
+  elements.permissionList.querySelectorAll("[data-permission]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const key = input.dataset.permission;
+      if (key === "cards" || key === "wallets") {
+        input.checked = false;
+        return;
+      }
+      state.permissions[key] = input.checked;
+      saveState();
+      showToast(`${permissionLabel(key)} ${input.checked ? "enabled" : "disabled"}`);
+    });
+  });
+}
+
+function renderMemory() {
+  elements.memoryCount.textContent = `${state.memories.length} notes`;
+  if (!state.memories.length) {
+    elements.memoryList.innerHTML = `<div class="empty-state">No saved memory yet.</div>`;
+    return;
+  }
+
+  elements.memoryList.innerHTML = state.memories
+    .slice()
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(
+      (memory) => `
+        <article class="memory-item">
+          <header>
+            <strong>Saved note</strong>
+            <time>${formatShortDate(memory.createdAt)}</time>
+          </header>
+          <p>${escapeHtml(memory.text)}</p>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function addTask(text) {
+  if (!text) return;
+  state.tasks.unshift({ id: createId("task"), text, done: false });
+  saveState();
+  renderTasks();
+  renderHeader();
+  renderNextMoves();
+  showToast("Priority added");
+}
+
+function addMemory(text) {
+  state.memories.push({ id: createId("mem"), text, createdAt: new Date().toISOString() });
+  saveState();
+  renderMemory();
+}
+
+function sendMessage(text) {
+  if (!text) return;
+  state.chat.push({ role: "user", text });
+  state.chat.push({ role: "assistant", text: composeReply(text) });
+  saveState();
+  renderChat();
+}
+
+function composeReply(rawText) {
+  const text = rawText.toLowerCase();
+  const name = state.profile.name || APP_NAME;
+
+  if (/(cpt|opt|stem|h-?1b|visa|f-1|international)/i.test(rawText)) {
+    return [
+      `${name}, keep this clean: do not start paid work until the DSO authorization is on your I-20 for CPT, or the right OPT/STEM/H-1B path is approved.`,
+      "Best next action: get the company offer letter, confirm the role is related to your degree, send it to Belhaven DSO, and save the written approval."
+    ].join("\n\n");
+  }
+
+  if (/(research|paper|doctorate|citation|thesis|literature|belhaven)/i.test(rawText)) {
+    return [
+      "For the paper, we should reduce the topic to one research question first.",
+      "Use this frame: problem, population/system, cybersecurity control or risk, method, expected contribution.",
+      "Open Research Desk and I will turn the topic into an outline, source matrix, search queries, and first-week writing plan."
+    ].join("\n\n");
+  }
+
+  if (/(bug|bounty|vulnerability|hackerone|bugcrowd|intigriti|yeswehack|scan|xss|idor|ssrf|sqli)/i.test(rawText)) {
+    return [
+      "I can help with bug bounty work only inside authorized scope.",
+      "The highest-value path is usually broken access control, IDOR, auth/session logic, exposed secrets, SSRF surfaces, unsafe file upload, cloud storage exposure, and business logic flaws.",
+      "Use Security Lab with the program name, target asset, and notes. I will give you a safe report plan and evidence checklist."
+    ].join("\n\n");
+  }
+
+  if (/(apply|application|resume|assessment|interview|rejected|pending|job|internship|linkedin|indeed|money|debt|fee|income|company)/i.test(rawText)) {
+    const counts = countApplications();
+    return [
+      `Your pipeline has ${counts.total} tracked applications: ${counts.applied} applied, ${counts.pending} pending, ${counts.rejected} rejected, ${counts.assessment} assessments, and ${counts.interview} interviews.`,
+      "Use Jobs to paste a job description. I will score the fit against your resume, prepare a resume-tailoring checklist, draft a cover message, and save the status.",
+      "For submissions, Achavelli should prepare and review with you before anything is sent."
+    ].join("\n\n");
+  }
+
+  if (/(today|plan|schedule|priority|next)/i.test(rawText)) {
+    const open = state.tasks.filter((task) => !task.done).slice(0, 3);
+    if (!open.length) return "Your command stack is clear. Add one research priority, one CPT career priority, and one health/admin priority.";
+    return `Your next three moves:\n\n${open.map((task, index) => `${index + 1}. ${task.text}`).join("\n")}`;
+  }
+
+  return [
+    "I can help turn that into a concrete next action.",
+    "Tell me whether this is for school, career, bug bounty, immigration-safe planning, or personal organization, and I will shape it into steps."
+  ].join("\n\n");
+}
+
+function handleCommand(command) {
+  const prompts = {
+    "daily-plan": "Plan my day based on my current priorities.",
+    "research-paper": "Help me create a research paper plan for my doctorate.",
+    "bug-bounty": "Give me a safe bug bounty checklist for an authorized program.",
+    "career-money": "Help me track job applications, prepare application packets, and choose CPT-safe cybersecurity roles.",
+    "visa-safe": "What guardrails should I follow as an F-1 international student?"
+  };
+  showView("ask");
+  sendMessage(prompts[command] || "Help me decide the next best action.");
+}
+
+function saveCareerProfile() {
+  state.career.resumeText = elements.resumeText.value.trim();
+  state.career.targetRoles = elements.targetRoles.value.trim();
+  state.career.workAuthNotes = elements.workAuthNotes.value.trim();
+  saveState();
+  showToast("Career profile saved");
+}
+
+function buildJobPacket() {
+  const job = getJobFormValues();
+  const fit = scoreJobFit(job.description, state.career.resumeText, job.role);
+  const role = job.role || "Target role";
+  const company = job.company || "Target company";
+
+  return `
+    <h3>${escapeHtml(role)} at ${escapeHtml(company)}</h3>
+    <div class="match-hero">
+      <div class="match-score">
+        <strong>${fit.score}%</strong>
+        <span>${escapeHtml(fit.label)}</span>
+      </div>
+      <p>${escapeHtml(fit.verdict)}</p>
+    </div>
+    <h3>Resume Match Breakdown</h3>
+    <div class="component-list">
+      ${fit.components
+        .map(
+          (component) => `
+            <div class="component-row">
+              <div>
+                <strong>${escapeHtml(component.label)}</strong>
+                <span>${component.score}%</span>
+              </div>
+              <div class="component-bar" aria-label="${escapeHtml(component.label)} ${component.score}%">
+                <span style="width: ${component.score}%"></span>
+              </div>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+    <h3>Matched Evidence</h3>
+    <div class="keyword-pills">
+      ${fit.matchedKeywords.length ? fit.matchedKeywords.map((keyword) => `<span>${escapeHtml(keyword)}</span>`).join("") : "<span>No strong keyword overlap yet</span>"}
+    </div>
+    <h3>Missing Or Weak Signals</h3>
+    <ul>
+      ${fit.gaps.map((gap) => `<li>${escapeHtml(gap)}</li>`).join("")}
+    </ul>
+    <h3>Resume Tailoring Checklist</h3>
+    <ul>
+      <li>Move the most relevant cybersecurity skills into the top third of the resume.</li>
+      <li>Mirror truthful job keywords: ${fit.priorityKeywords.length ? fit.priorityKeywords.map(escapeHtml).join(", ") : "security, analysis, risk, cloud, monitoring"}.</li>
+      <li>Add measurable outcomes for projects, labs, internships, or coursework.</li>
+      <li>Keep work authorization language simple: CPT authorization available through school process before start date.</li>
+      ${fit.missingKeywords.length ? `<li>Consider adding truthful evidence for: ${fit.missingKeywords.map(escapeHtml).join(", ")}.</li>` : ""}
+    </ul>
+    <h3>Apply Decision</h3>
+    <p><strong>${escapeHtml(fit.decision.title)}:</strong> ${escapeHtml(fit.decision.body)}</p>
+    <h3>Cover Message Draft</h3>
+    <p>Hello ${escapeHtml(company)} team,</p>
+    <p>I am pursuing my doctorate at Belhaven University after completing a master's in cybersecurity at Webster University. I am interested in the ${escapeHtml(role)} role because it aligns with my cybersecurity background, hands-on security research, and focus on practical risk reduction. I can bring strong learning speed, security analysis discipline, and careful documentation to the team.</p>
+    <p>I would welcome the opportunity to discuss how my cybersecurity training and current doctoral work can support this role.</p>
+    <h3>Submission Guardrail</h3>
+    <ul>
+      <li>Review every answer before submission.</li>
+      <li>Do not claim experience, authorization, certifications, or skills you do not have.</li>
+      <li>Save confirmation emails and update status after applying.</li>
+    </ul>
+    <h3>Next Step</h3>
+    <p>${escapeHtml(job.nextStep || "Review the packet, tailor the resume, then apply manually or through an approved connector.")}</p>
+  `;
+}
+
+function saveApplication() {
+  const job = getJobFormValues();
+  if (!job.company && !job.role) {
+    showToast("Add company or role first");
+    return;
+  }
+
+  const packet = state.latestJobPacket || buildJobPacket();
+  const fit = scoreJobFit(job.description, state.career.resumeText, job.role);
+  state.latestJobPacket = packet;
+  state.career.applications.unshift({
+    id: createId("app"),
+    company: job.company || "Unknown company",
+    role: job.role || "Untitled role",
+    link: job.link,
+    status: job.status,
+    date: job.date || new Date().toISOString().slice(0, 10),
+    nextStep: job.nextStep,
+    description: job.description,
+    fitScore: fit.score,
+    packet,
+    createdAt: new Date().toISOString()
+  });
+  saveState();
+  renderHeader();
+  renderJobMetrics();
+  renderJobOutput();
+  renderApplicationList();
+  showToast("Application saved");
+}
+
+function getJobFormValues() {
+  return {
+    company: elements.jobCompany.value.trim(),
+    role: elements.jobRole.value.trim(),
+    link: elements.jobLink.value.trim(),
+    status: elements.jobStatus.value,
+    date: elements.jobDate.value,
+    nextStep: elements.jobNextStep.value.trim(),
+    description: elements.jobDescription.value.trim()
+  };
+}
+
+function scoreJobFit(description, resume, role = "") {
+  const jobText = normalizeText(`${role} ${description}`);
+  const resumeText = normalizeText(`${resume} ${state.career.targetRoles}`);
+  const authText = normalizeText(state.career.workAuthNotes);
+  const jobKeywords = extractKeywords(description).slice(0, 28);
+  const resumeKeywords = extractKeywords(resumeText);
+  const matchedKeywords = jobKeywords.filter((keyword) => resumeKeywords.includes(keyword));
+  const missingKeywords = jobKeywords.filter((keyword) => !resumeKeywords.includes(keyword)).slice(0, 10);
+  const priorityKeywords = unique([...matchedKeywords, ...jobKeywords]).slice(0, 12);
+
+  const skillGroups = [
+    { label: "SOC/SIEM", terms: ["soc", "siem", "splunk", "sentinel", "elastic", "alert", "monitoring", "triage"] },
+    { label: "Vulnerability Management", terms: ["vulnerability", "nessus", "qualys", "tenable", "remediation", "patch", "cve"] },
+    { label: "GRC/Risk", terms: ["grc", "risk", "compliance", "audit", "policy", "nist", "iso", "control"] },
+    { label: "Cloud Security", terms: ["cloud", "aws", "azure", "gcp", "iam", "s3", "security group"] },
+    { label: "Application Security", terms: ["application", "appsec", "owasp", "api", "xss", "sqli", "idor", "burp"] },
+    { label: "Incident Response", terms: ["incident", "response", "forensic", "containment", "edr", "playbook"] },
+    { label: "Scripting", terms: ["python", "bash", "powershell", "automation", "script"] },
+    { label: "Systems/Network", terms: ["linux", "windows", "network", "tcp", "dns", "firewall"] }
+  ];
+
+  const requiredGroups = skillGroups.filter((group) => hasAnyTerm(jobText, group.terms));
+  const matchedGroups = requiredGroups.filter((group) => hasAnyTerm(resumeText, group.terms));
+  const missingGroups = requiredGroups.filter((group) => !hasAnyTerm(resumeText, group.terms));
+  const targetRoleWords = state.career.targetRoles
+    .toLowerCase()
+    .split(/[,/]/)
+    .flatMap((targetRole) => targetRole.trim().split(/\s+/))
+    .filter((word) => word.length > 3);
+  const roleHits = unique(targetRoleWords).filter((word) => jobText.includes(word));
+
+  const keywordScore = ratioScore(matchedKeywords.length, Math.min(jobKeywords.length || 1, 18));
+  const skillScore = requiredGroups.length ? ratioScore(matchedGroups.length, requiredGroups.length) : 62;
+  const roleScore = roleHits.length ? Math.min(96, 55 + roleHits.length * 10) : 42;
+  const experienceSignals = ["master", "doctorate", "cyber", "project", "intern", "analyst", "research", "bug bounty", "cloud", "soc"].filter((term) =>
+    resumeText.includes(term)
+  );
+  const experienceScore = Math.min(95, 35 + experienceSignals.length * 7);
+  const authScore = authText.includes("cpt") || authText.includes("f 1") || authText.includes("f-1") ? 86 : 45;
+
+  const score = Math.round(keywordScore * 0.34 + skillScore * 0.28 + roleScore * 0.18 + experienceScore * 0.14 + authScore * 0.06);
+  const label = score >= 82 ? "Strong resume match" : score >= 68 ? "Good resume match" : score >= 52 ? "Possible match after tailoring" : "Weak match right now";
+  const verdict =
+    score >= 82
+      ? "Apply after a quick review. The resume already reflects most of this job profile."
+      : score >= 68
+        ? "Apply after tailoring the top section and adding the missing keywords you can truthfully support."
+        : score >= 52
+          ? "Tailor first. The role is possible, but the resume needs stronger evidence before submitting."
+          : "Do not rush this one. Either improve the resume evidence or target a closer role.";
+  const gaps = [
+    missingGroups.length
+      ? `Add truthful evidence for these skill areas: ${missingGroups.map((group) => group.label).join(", ")}.`
+      : "No major required skill family is missing from the resume profile.",
+    missingKeywords.length
+      ? `Missing ATS/job keywords: ${missingKeywords.slice(0, 8).join(", ")}.`
+      : "Keyword coverage is strong for this job description.",
+    authScore < 70
+      ? "Add a concise CPT/F-1 work authorization note so you do not lose track of legal start-date requirements."
+      : "CPT/F-1 work authorization note is present for review before applying."
+  ];
+  const decision =
+    score >= 75
+      ? { title: "Apply", body: "The profile is strong enough to submit after you review the resume and application answers." }
+      : score >= 52
+        ? { title: "Tailor First", body: "Update the resume summary, skills, and project bullets before submitting." }
+        : { title: "Hold", body: "Save it if useful, but prioritize closer cybersecurity internship roles first." };
+
+  return {
+    score,
+    label,
+    verdict,
+    components: [
+      { label: "Keyword match", score: keywordScore },
+      { label: "Skill family match", score: skillScore },
+      { label: "Role alignment", score: roleScore },
+      { label: "Experience evidence", score: experienceScore },
+      { label: "CPT readiness note", score: authScore }
+    ],
+    matchedKeywords: matchedKeywords.slice(0, 14),
+    missingKeywords,
+    priorityKeywords,
+    matchedSkillGroups: matchedGroups.map((group) => group.label),
+    missingSkillGroups: missingGroups.map((group) => group.label),
+    gaps,
+    decision
+  };
+}
+
+function countApplications() {
+  const applications = state.career.applications || [];
+  return {
+    total: applications.length,
+    applied: applications.filter((item) => item.status === "applied").length,
+    pending: applications.filter((item) => item.status === "pending" || item.status === "drafted").length,
+    rejected: applications.filter((item) => item.status === "rejected").length,
+    assessment: applications.filter((item) => item.status === "assessment").length,
+    interview: applications.filter((item) => item.status === "interview").length
+  };
+}
+
+function exportJobsCsv() {
+  const rows = [
+    ["Company", "Role", "Status", "Date", "Fit Score", "Next Step", "Link"],
+    ...state.career.applications.map((item) => [
+      item.company,
+      item.role,
+      formatStatus(item.status),
+      item.date,
+      item.fitScore,
+      item.nextStep,
+      item.link
+    ])
+  ];
+  const csv = rows.map((row) => row.map(escapeCsv).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `achavelli-jobs-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("Jobs export started");
+}
+
+function buildResearchBlueprint() {
+  const topic = elements.researchTopic.value.trim() || "Cybersecurity risk management";
+  const question =
+    elements.researchQuestion.value.trim() ||
+    "How can organizations reduce high-impact cybersecurity risk with practical controls?";
+  const notes = elements.researchNotes.value.trim();
+  const keywords = extractKeywords(`${topic} ${question} ${notes}`).slice(0, 8);
+  const sourceIdeas = keywords.length
+    ? keywords.map((word) => `${word} cybersecurity empirical study`)
+    : ["zero trust adoption study", "security awareness effectiveness", "cloud misconfiguration risk"];
+
+  return `
+    <h3>${escapeHtml(topic)}</h3>
+    <p><strong>Research question:</strong> ${escapeHtml(question)}</p>
+    <h3>Working Outline</h3>
+    <ol>
+      <li>Introduction: define the cybersecurity problem, affected population, and why it matters now.</li>
+      <li>Literature review: compare the strongest theories, frameworks, and recent empirical findings.</li>
+      <li>Method: explain data sources, inclusion criteria, and how evidence will be evaluated.</li>
+      <li>Analysis: connect findings to security practice, organizational constraints, and measurable outcomes.</li>
+      <li>Conclusion: state the contribution, limitations, and future research direction.</li>
+    </ol>
+    <h3>Source Matrix</h3>
+    <ul>
+      <li>Peer-reviewed studies: methods, sample size, limits, and findings.</li>
+      <li>Standards: NIST, CIS, ISO, and sector-specific guidance where relevant.</li>
+      <li>Recent threat reports: use for context, not as the main evidence base.</li>
+      <li>Case studies: only include when they directly support the research question.</li>
+    </ul>
+    <h3>Search Queries</h3>
+    <ul>
+      ${sourceIdeas.map((idea) => `<li><code>${escapeHtml(idea)}</code></li>`).join("")}
+    </ul>
+    <h3>Next Writing Block</h3>
+    <ul>
+      <li>Write a 150-word problem statement.</li>
+      <li>Collect 8 scholarly sources and mark each as theory, method, or evidence.</li>
+      <li>Create an annotated bibliography entry for the 3 strongest sources.</li>
+    </ul>
+  `;
+}
+
+function saveResearchProject() {
+  const topic = elements.researchTopic.value.trim() || "Untitled research project";
+  const question = elements.researchQuestion.value.trim();
+  const notes = elements.researchNotes.value.trim();
+  const blueprint = state.latestResearch || buildResearchBlueprint();
+  state.projects.unshift({
+    id: createId("project"),
+    topic,
+    question,
+    notes,
+    blueprint,
+    createdAt: new Date().toISOString()
+  });
+  state.latestResearch = blueprint;
+  saveState();
+  renderHeader();
+  renderResearchOutput();
+  showToast("Research project saved");
+}
+
+function buildSecurityAssessment() {
+  const program = elements.programName.value.trim() || "Unspecified program";
+  const target = elements.targetAsset.value.trim() || "Unspecified target";
+  const notes = elements.scopeNotes.value.trim();
+  const authorized = elements.scopeApproved.checked;
+
+  if (!authorized) {
+    return `
+      <h3>Scope Gate</h3>
+      <p><strong>${escapeHtml(program)}</strong> cannot be assessed yet because authorized scope is not confirmed.</p>
+      <h3>Required Before Testing</h3>
+      <ul>
+        <li>Program page or written permission.</li>
+        <li>Allowed domains, IPs, APIs, and mobile apps.</li>
+        <li>Allowed testing methods and prohibited actions.</li>
+        <li>Report format, severity rules, and disclosure policy.</li>
+      </ul>
+    `;
+  }
+
+  const findings = inferSecurityAngles(`${target} ${notes}`);
+  return `
+    <h3>${escapeHtml(program)}</h3>
+    <p><strong>Target:</strong> ${escapeHtml(target)}</p>
+    <h3>High-Value Angles</h3>
+    <ul>
+      ${findings.map((finding) => `<li><strong>${finding.title}:</strong> ${finding.body}</li>`).join("")}
+    </ul>
+    <h3>Evidence Checklist</h3>
+    <ul>
+      <li>Exact asset and program scope reference.</li>
+      <li>Steps to reproduce with timestamps and test account roles.</li>
+      <li>Request and response samples with secrets removed.</li>
+      <li>Business impact stated in plain language.</li>
+      <li>Suggested fix tied to the root cause.</li>
+    </ul>
+    <h3>Report Skeleton</h3>
+    <ol>
+      <li>Summary: one sentence describing the issue and impact.</li>
+      <li>Scope: program, asset, and permission proof.</li>
+      <li>Reproduction: minimal safe steps.</li>
+      <li>Impact: account, data, privilege, or system boundary affected.</li>
+      <li>Remediation: precise control or validation recommendation.</li>
+    </ol>
+  `;
+}
+
+function saveSecurityReport() {
+  const program = elements.programName.value.trim() || "Untitled program";
+  const target = elements.targetAsset.value.trim();
+  const notes = elements.scopeNotes.value.trim();
+  const assessment = state.latestSecurity || buildSecurityAssessment();
+  state.reports.unshift({
+    id: createId("report"),
+    program,
+    target,
+    notes,
+    authorized: elements.scopeApproved.checked,
+    assessment,
+    createdAt: new Date().toISOString()
+  });
+  state.latestSecurity = assessment;
+  saveState();
+  renderHeader();
+  renderSecurityOutput();
+  showToast("Security assessment saved");
+}
+
+function inferSecurityAngles(input) {
+  const text = input.toLowerCase();
+  const findings = [];
+  const add = (title, body) => findings.push({ title, body });
+
+  if (/login|auth|session|jwt|token|oauth|sso|password/.test(text)) {
+    add("Authentication and session logic", "Check role separation, token expiry, session invalidation, reset flows, and privilege changes.");
+  }
+  if (/user_id|userid|account|order|invoice|uuid|id=|profile|tenant/.test(text)) {
+    add("Broken access control or IDOR", "Compare low-privilege and high-privilege accounts for object access across users or tenants.");
+  }
+  if (/api|graphql|rest|endpoint|json/.test(text)) {
+    add("API authorization", "Map endpoints by role and verify server-side authorization on every sensitive read or write.");
+  }
+  if (/upload|file|image|pdf|csv|import/.test(text)) {
+    add("File handling", "Review extension validation, content type checks, storage permissions, and unsafe parsing behavior.");
+  }
+  if (/redirect|callback|return_url|next=|url=/.test(text)) {
+    add("Redirect and callback abuse", "Check allowlists, OAuth callback handling, and token leakage through redirects.");
+  }
+  if (/s3|bucket|blob|firebase|storage|cloudfront|cdn/.test(text)) {
+    add("Cloud storage exposure", "Confirm object permissions, signed URL expiry, bucket listing, and public write risk.");
+  }
+  if (/webhook|fetch|url|import from url|ssrf|metadata/.test(text)) {
+    add("Server-side request surface", "Look for safe validation of user-supplied URLs, redirects, internal hosts, and metadata endpoints.");
+  }
+  if (/xss|html|script|markdown|comment|template/.test(text)) {
+    add("Client-side injection", "Review stored and reflected rendering points, sanitization, content security policy, and privileged contexts.");
+  }
+  if (/rate|otp|mfa|coupon|invite|trial|reset/.test(text)) {
+    add("Business logic and rate limits", "Check abuse paths where repeated actions create account, payment, invite, or verification impact.");
+  }
+
+  if (!findings.length) {
+    add("Access control first", "Start by mapping user roles, sensitive objects, and state-changing actions inside the authorized scope.");
+    add("Input and workflow review", "Look for places where user-controlled data crosses trust boundaries or changes business state.");
+    add("Exposure review", "Check public assets, metadata, headers, and accidental information disclosure without aggressive scanning.");
+  }
+
+  return findings.slice(0, 6);
+}
+
+function startVoiceInput(options = {}) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    speak("Voice input is not available in this browser.");
+    showToast("Voice input unavailable");
+    return;
+  }
+
+  const locked = state.voiceLock.enabled && !voiceIsUnlocked() && !options.forceCommand;
+  const voiceSamplePromise = locked && state.voiceLock.voiceprint ? captureVoiceSample(3200).catch(() => null) : Promise.resolve(null);
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  elements.voiceButton.classList.add("listening");
+  showToast(locked ? "Say unlock phrase" : "Listening");
+  recognition.start();
+
+  recognition.onresult = async (event) => {
+    const transcript = event.results[0][0].transcript;
+    if (locked) {
+      const voiceSample = await voiceSamplePromise;
+      handleVoiceUnlock(transcript, voiceSample);
+      return;
+    }
+    showView("ask");
+    sendMessage(transcript);
+    speak("Achavelli added that to the conversation.");
+  };
+
+  recognition.onerror = () => {
+    showToast("Voice input stopped");
+  };
+
+  recognition.onend = () => {
+    elements.voiceButton.classList.remove("listening");
+  };
+}
+
+async function enrollVoiceprint() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast("Microphone capture unavailable");
+    return;
+  }
+
+  const phrase = normalizePhrase(elements.unlockPhrase.value || state.voiceLock.phrase);
+  state.voiceLock.phrase = phrase || "achavelli unlock";
+  state.voiceLock.enabled = true;
+  elements.voiceLockEnabled.checked = true;
+  showToast(`Say "${state.voiceLock.phrase}"`);
+  speak(`Say ${state.voiceLock.phrase} now.`);
+
+  try {
+    const sample = await captureVoiceSample(3600);
+    state.voiceLock.voiceprint = sample;
+    state.voiceLock.lastScore = null;
+    state.voiceLock.unlockedUntil = 0;
+    saveState();
+    renderVoiceLock();
+    showToast("Voice enrolled");
+    speak("Voice enrolled on this device.");
+  } catch {
+    showToast("Voice enrollment failed");
+  }
+}
+
+function handleVoiceUnlock(transcript, voiceSample) {
+  const heard = normalizePhrase(transcript);
+  const phrase = normalizePhrase(state.voiceLock.phrase);
+  const phraseMatches = heard === phrase || heard.includes(phrase);
+  const voiceResult = checkVoiceprint(voiceSample);
+  state.voiceLock.lastScore = voiceResult.score;
+
+  if (phraseMatches && voiceResult.allowed) {
+    state.voiceLock.unlockedUntil = Date.now() + 5 * 60 * 1000;
+    saveState();
+    renderVoiceLock();
+    showToast("Voice unlocked");
+    speak("Achavelli unlocked. Press the microphone again and say your command.");
+    return;
+  }
+  state.voiceLock.unlockedUntil = 0;
+  saveState();
+  renderVoiceLock();
+  showToast(phraseMatches ? "Voiceprint denied" : "Phrase denied");
+  speak("Voice lock denied.");
+}
+
+function voiceIsUnlocked() {
+  return Number(state.voiceLock.unlockedUntil || 0) > Date.now();
+}
+
+function checkVoiceprint(sample) {
+  const enrolled = state.voiceLock.voiceprint;
+  if (!enrolled) return { allowed: true, score: null };
+  if (!sample) return { allowed: false, score: 0 };
+  const score = compareVoiceprints(enrolled, sample);
+  return { allowed: score >= 0.62, score };
+}
+
+async function captureVoiceSample(durationMs = 3000) {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) throw new Error("AudioContext unavailable");
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  });
+  const audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(stream);
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  source.connect(analyser);
+
+  const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+  const timeData = new Uint8Array(analyser.fftSize);
+  const frames = [];
+  const startedAt = performance.now();
+
+  return new Promise((resolve, reject) => {
+    const finish = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      await audioContext.close().catch(() => {});
+      const voiceprint = averageVoiceFrames(frames);
+      voiceprint ? resolve(voiceprint) : reject(new Error("No usable voice frames"));
+    };
+
+    const sample = () => {
+      analyser.getByteFrequencyData(frequencyData);
+      analyser.getByteTimeDomainData(timeData);
+      const frame = analyzeVoiceFrame(frequencyData, timeData, audioContext.sampleRate, analyser.fftSize);
+      if (frame.rms > 0.01) frames.push(frame);
+      if (performance.now() - startedAt >= durationMs) {
+        finish();
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+
+    sample();
+  });
+}
+
+function analyzeVoiceFrame(frequencyData, timeData, sampleRate, fftSize) {
+  let total = 0;
+  let weighted = 0;
+  let low = 0;
+  let mid = 0;
+  let high = 0;
+
+  frequencyData.forEach((value, index) => {
+    const magnitude = value / 255;
+    const hz = (index * sampleRate) / fftSize;
+    total += magnitude;
+    weighted += magnitude * hz;
+    if (hz < 500) low += magnitude;
+    else if (hz < 2200) mid += magnitude;
+    else high += magnitude;
+  });
+
+  let rms = 0;
+  let crossings = 0;
+  let previous = timeData[0] - 128;
+  timeData.forEach((value) => {
+    const centered = (value - 128) / 128;
+    rms += centered * centered;
+    if ((value - 128 > 0 && previous < 0) || (value - 128 < 0 && previous > 0)) crossings += 1;
+    previous = value - 128;
+  });
+
+  rms = Math.sqrt(rms / timeData.length);
+  const centroid = total ? weighted / total : 0;
+  const energy = total || 1;
+  return {
+    rms,
+    centroid,
+    lowRatio: low / energy,
+    midRatio: mid / energy,
+    highRatio: high / energy,
+    zeroCrossing: crossings / timeData.length
+  };
+}
+
+function averageVoiceFrames(frames) {
+  if (!frames.length) return null;
+  const keys = Object.keys(frames[0]);
+  return keys.reduce((voiceprint, key) => {
+    voiceprint[key] = frames.reduce((sum, frame) => sum + frame[key], 0) / frames.length;
+    return voiceprint;
+  }, {});
+}
+
+function compareVoiceprints(enrolled, sample) {
+  const distance =
+    Math.abs(enrolled.rms - sample.rms) / 0.22 +
+    Math.abs(enrolled.centroid - sample.centroid) / 2600 +
+    Math.abs(enrolled.lowRatio - sample.lowRatio) / 0.55 +
+    Math.abs(enrolled.midRatio - sample.midRatio) / 0.55 +
+    Math.abs(enrolled.highRatio - sample.highRatio) / 0.55 +
+    Math.abs(enrolled.zeroCrossing - sample.zeroCrossing) / 0.18;
+  return Math.max(0, Math.min(1, 1 - distance / 6));
+}
+
+function speak(text) {
+  if (!("speechSynthesis" in window)) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.96;
+  utterance.pitch = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+}
+
+function exportData() {
+  const payload = JSON.stringify(state, null, 2);
+  const blob = new Blob([payload], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `achavelli-export-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("Export started");
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY));
+    return mergeState(clone(defaultState), saved || {});
+  } catch {
+    return clone(defaultState);
+  }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function mergeState(base, saved) {
+  const savedName = saved.profile?.name;
+  const profile = { ...base.profile, ...(saved.profile || {}) };
+  if (!savedName || savedName === "Rishi") {
+    profile.name = APP_NAME;
+  }
+  const chat = Array.isArray(saved.chat) && saved.chat.length ? saved.chat.map(migrateChatMessage) : base.chat;
+  return {
+    ...base,
+    ...saved,
+    profile,
+    permissions: {
+      ...base.permissions,
+      ...(saved.permissions || {}),
+      cards: false,
+      wallets: false
+    },
+    tasks: Array.isArray(saved.tasks) ? saved.tasks : base.tasks,
+    memories: Array.isArray(saved.memories) ? saved.memories : base.memories,
+    projects: Array.isArray(saved.projects) ? saved.projects : base.projects,
+    reports: Array.isArray(saved.reports) ? saved.reports : base.reports,
+    career: {
+      ...base.career,
+      ...(saved.career || {}),
+      applications: Array.isArray(saved.career?.applications) ? saved.career.applications : base.career.applications
+    },
+    chat,
+    latestJobPacket: saved.latestJobPacket || base.latestJobPacket,
+    voiceLock: {
+      ...base.voiceLock,
+      ...(saved.voiceLock || {}),
+      phrase: normalizePhrase(saved.voiceLock?.phrase || base.voiceLock.phrase),
+      voiceprint: saved.voiceLock?.voiceprint || base.voiceLock.voiceprint,
+      lastScore: saved.voiceLock?.lastScore || base.voiceLock.lastScore
+    }
+  };
+}
+
+function migrateChatMessage(message) {
+  return {
+    ...message,
+    text: String(message.text || "")
+      .replaceAll("Astra", APP_NAME)
+      .replaceAll("Rishi", APP_NAME)
+  };
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("service-worker.js").catch(() => {});
 }
 
 function refreshIcons() {
@@ -326,740 +1361,108 @@ function refreshIcons() {
   }
 }
 
-function resetState() {
-  state.rawEvents = [];
-  state.events = [];
-  state.incidents = [];
-  state.selectedIncidentId = null;
-  state.topSignals = [];
-  state.confidence = 0;
-  state.coverage = [];
-}
-
-function runAnalysis() {
-  const input = elements.eventInput.value.trim();
-  if (!input) {
-    elements.eventInput.value = JSON.stringify(window.SENTINEL_SAMPLE_EVENTS, null, 2);
-  }
-
-  const parsed = parseEvents(elements.eventInput.value);
-  state.rawEvents = parsed;
-  const enabledEvents = parsed.filter(isEventEnabled);
-  const context = buildContext(enabledEvents);
-  state.events = enabledEvents
-    .map((event, index) => scoreEvent(normalizeEvent(event, index), context))
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  state.incidents = correlateIncidents(state.events);
-  state.topSignals = summarizeSignals(state.events);
-  state.coverage = [...new Set(state.events.flatMap((event) => event.signals.map((signal) => signal.tactic)))];
-  state.confidence = calculateConfidence(state.events, state.incidents);
-  state.selectedIncidentId = state.incidents[0]?.id || null;
-  renderAll();
-  switchTab("overview");
-}
-
-function parseEvents(input) {
-  try {
-    const parsed = JSON.parse(input);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
-    return input
-      .split(/\n+/)
-      .map((line, index) => line.trim())
-      .filter(Boolean)
-      .map((line, index) => parseRawLine(line, index));
-  }
-}
-
-function parseRawLine(line, index) {
-  const ipMatch = line.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
-  const userMatch = line.match(/user[=: ]+([a-z0-9._-]+)/i);
-  const hostMatch = line.match(/host[=: ]+([a-z0-9._-]+)/i);
-  const type = inferEventType(line);
-  return {
-    timestamp: new Date(Date.now() - (20 - index) * 60000).toISOString(),
-    source: inferSource(type, line),
-    event_type: type,
-    user: userMatch?.[1] || "unknown.user",
-    host: hostMatch?.[1] || "unknown-host",
-    src_ip: ipMatch?.[0] || "",
-    country: /ru|cn|ir|kp|foreign|unfamiliar/i.test(line) ? "Unknown external" : "US",
-    message: line,
-    severity: /critical|dump|exfil|admin|encoded|lsass/i.test(line)
-      ? "critical"
-      : /fail|suspicious|beacon|firewall|large/i.test(line)
-        ? "high"
-        : "medium"
-  };
-}
-
-function inferEventType(line) {
-  if (/fail|denied|invalid password/i.test(line)) return "auth.failure";
-  if (/success|logged in|sso/i.test(line)) return "auth.success";
-  if (/admin|privilege|role|group|policy/i.test(line)) return "privilege.change";
-  if (/powershell|process|cmd|bash|zsh/i.test(line)) return "process.start";
-  if (/lsass|credential|dump/i.test(line)) return "credential.access";
-  if (/dns|domain|beacon/i.test(line)) return "dns.query";
-  if (/download|egress|transfer|exfil/i.test(line)) return "egress.spike";
-  if (/firewall|security group|port/i.test(line)) return "config.change";
-  return "security.event";
-}
-
-function inferSource(type, line) {
-  if (/auth|privilege/i.test(type)) return "identity";
-  if (/process|credential/i.test(type)) return "endpoint";
-  if (/dns|egress/i.test(type)) return "network";
-  if (/cloud|iam|s3|firewall|config|privilege/i.test(`${type} ${line}`)) return "cloud";
-  return "security";
-}
-
-function normalizeEvent(event, index) {
-  return {
-    id: event.id || `evt-${index + 1}`,
-    timestamp: event.timestamp || new Date(Date.now() - index * 60000).toISOString(),
-    source: event.source || inferSource(event.event_type || "", event.message || ""),
-    event_type: event.event_type || inferEventType(event.message || ""),
-    user: event.user || "unknown.user",
-    host: event.host || "unknown-host",
-    src_ip: event.src_ip || event.ip || "",
-    country: event.country || "Unknown",
-    dest: event.dest || event.destination || "",
-    process: event.process || "",
-    command: event.command || "",
-    object: event.object || "",
-    bytes_out: Number(event.bytes_out || event.bytes || 0),
-    message: event.message || JSON.stringify(event),
-    severity: String(event.severity || "medium").toLowerCase()
-  };
-}
-
-function isEventEnabled(event) {
-  const type = event.event_type || "";
-  const source = event.source || "";
-  return Object.entries(state.modes).some(([mode, enabled]) => {
-    if (!enabled) return false;
-    return modeMap[mode].includes(source) || modeMap[mode].includes(type);
-  });
-}
-
-function buildContext(events) {
-  const failuresByUser = new Map();
-  const destCounts = new Map();
-  const hostsByUser = new Map();
-  const countriesByUser = new Map();
-
-  events.forEach((event) => {
-    const user = event.user || "";
-    if (event.event_type === "auth.failure") {
-      failuresByUser.set(user, (failuresByUser.get(user) || 0) + 1);
-    }
-    if (event.dest) {
-      destCounts.set(event.dest, (destCounts.get(event.dest) || 0) + 1);
-    }
-    if (user && event.host) {
-      if (!hostsByUser.has(user)) hostsByUser.set(user, new Set());
-      hostsByUser.get(user).add(event.host);
-    }
-    if (user && event.country) {
-      if (!countriesByUser.has(user)) countriesByUser.set(user, new Set());
-      countriesByUser.get(user).add(event.country);
-    }
-  });
-
-  return { failuresByUser, destCounts, hostsByUser, countriesByUser };
-}
-
-function scoreEvent(event, context) {
-  const signals = signalLibrary
-    .filter((signal) => state.modes[signal.mode])
-    .filter((signal) => signal.test(event, context));
-
-  const rawScore =
-    (severityBase[event.severity] || 28) +
-    signals.reduce((sum, signal) => sum + signal.weight, 0) +
-    (Number(event.bytes_out) > 500_000_000 ? 8 : 0);
-  const sensitivityBoost = (state.sensitivity - 70) * 0.35;
-  const risk = clamp(Math.round(rawScore + sensitivityBoost), 0, 100);
-  const severity = risk >= 88 ? "critical" : risk >= 68 ? "high" : risk >= 42 ? "medium" : "low";
-  return { ...event, signals, risk, modelSeverity: severity };
-}
-
-function correlateIncidents(events) {
-  if (!events.length) return [];
-
-  const groups = new Map();
-  events.forEach((event) => {
-    const key = event.user !== "unknown.user" ? event.user : event.host;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(event);
-  });
-
-  const incidents = [];
-  groups.forEach((groupEvents, entity) => {
-    const sorted = groupEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    const signalIds = new Set(sorted.flatMap((event) => event.signals.map((signal) => signal.id)));
-    const matched = incidentPatterns.filter((pattern) =>
-      pattern.requiredSignals.every((signal) => signalIds.has(signal))
-    );
-
-    matched.forEach((pattern) => {
-      const evidence = sorted.filter((event) =>
-        event.signals.some((signal) => pattern.requiredSignals.includes(signal.id))
-      );
-      incidents.push(buildIncident(pattern, entity, evidence));
-    });
-
-    if (!matched.length) {
-      const highRisk = sorted.filter((event) => event.risk >= 68);
-      if (highRisk.length) {
-        incidents.push(
-          buildIncident(
-            {
-              id: "general_high_risk",
-              title: "High-risk security activity requiring analyst review",
-              stage: "Unclassified high-risk behavior",
-              priority: Math.max(...highRisk.map((event) => event.risk)),
-              playbook: "General high-risk telemetry review"
-            },
-            entity,
-            highRisk
-          )
-        );
-      }
-    }
-  });
-
-  return incidents
-    .map((incident, index) => ({ ...incident, id: `inc-${index + 1}` }))
-    .sort((a, b) => b.risk - a.risk);
-}
-
-function buildIncident(pattern, entity, evidence) {
-  const first = evidence[0];
-  const last = evidence[evidence.length - 1];
-  const tactics = [...new Set(evidence.flatMap((event) => event.signals.map((signal) => signal.tactic)))];
-  const techniques = [...new Set(evidence.flatMap((event) => event.signals.map((signal) => signal.technique)))];
-  const risk = clamp(
-    Math.round(
-      Math.max(pattern.priority || 50, ...evidence.map((event) => event.risk)) +
-        Math.min(10, evidence.length * 1.5)
-    ),
-    0,
-    100
-  );
-  return {
-    pattern: pattern.id,
-    title: pattern.title,
-    entity,
-    stage: pattern.stage,
-    risk,
-    severity: risk >= 88 ? "critical" : risk >= 68 ? "high" : risk >= 42 ? "medium" : "low",
-    firstSeen: first.timestamp,
-    lastSeen: last.timestamp,
-    evidence,
-    tactics,
-    techniques,
-    playbook: pattern.playbook,
-    summary: createIncidentSummary(pattern, entity, evidence, tactics)
-  };
-}
-
-function createIncidentSummary(pattern, entity, evidence, tactics) {
-  const hosts = [...new Set(evidence.map((event) => event.host).filter(Boolean))];
-  const destinations = [...new Set(evidence.map((event) => event.dest || event.src_ip).filter(Boolean))];
-  return `${pattern.title} centered on ${entity}. The model linked ${evidence.length} events across ${hosts.length || 1} host context(s), with strongest evidence in ${tactics.slice(0, 3).join(", ") || "high-risk telemetry"}. Key external indicators: ${destinations.slice(0, 3).join(", ") || "none observed"}.`;
-}
-
-function summarizeSignals(events) {
-  const counts = new Map();
-  events.forEach((event) => {
-    event.signals.forEach((signal) => {
-      const current = counts.get(signal.id) || {
-        id: signal.id,
-        label: signal.label,
-        tactic: signal.tactic,
-        count: 0,
-        maxRisk: 0
-      };
-      current.count += 1;
-      current.maxRisk = Math.max(current.maxRisk, event.risk);
-      counts.set(signal.id, current);
-    });
-  });
-
-  return [...counts.values()]
-    .map((signal) => ({
-      ...signal,
-      score: clamp(Math.round(signal.count * 16 + signal.maxRisk * 0.55), 0, 100)
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6);
-}
-
-function calculateConfidence(events, incidents) {
-  if (!events.length) return 0;
-  const signalDensity = events.filter((event) => event.signals.length).length / events.length;
-  const incidentStrength = incidents.length ? Math.max(...incidents.map((incident) => incident.risk)) / 100 : 0;
-  const sourceCoverage = new Set(events.map((event) => event.source)).size / 4;
-  return clamp(Math.round((signalDensity * 44 + incidentStrength * 36 + sourceCoverage * 20)), 0, 99);
-}
-
-function renderAll() {
-  renderMetrics();
-  renderTimeline();
-  renderVerdict();
-  renderSignals();
-  renderIncidents();
-  renderInspector();
-  renderGraph();
-  renderPlaybooks();
-  refreshIcons();
-}
-
-function renderMetrics() {
-  const critical = state.events.filter((event) => event.risk >= 88).length;
-  elements.criticalCount.textContent = critical;
-  elements.criticalDelta.textContent = state.events.length
-    ? `${state.events.length} events analyzed`
-    : "No events analyzed";
-  elements.incidentCount.textContent = state.incidents.length;
-  elements.confidenceScore.textContent = `${state.confidence}%`;
-  elements.coverageScore.textContent = state.coverage.length;
-}
-
-function renderTimeline() {
-  if (!state.events.length) {
-    paintEmptyTimeline();
-    elements.timelineCaption.textContent = "Awaiting telemetry";
-    return;
-  }
-  elements.timelineCaption.textContent = `${state.events.length} scored events`;
-  const canvas = elements.timelineCanvas;
-  const ctx = canvas.getContext("2d");
-  const width = canvas.width;
-  const height = canvas.height;
-  ctx.clearRect(0, 0, width, height);
-  drawChartFrame(ctx, width, height);
-
-  const times = state.events.map((event) => new Date(event.timestamp).getTime());
-  const min = Math.min(...times);
-  const max = Math.max(...times);
-  const pad = 42;
-  const points = state.events.map((event) => {
-    const time = new Date(event.timestamp).getTime();
-    const x = min === max ? width / 2 : pad + ((time - min) / (max - min)) * (width - pad * 2);
-    const y = height - pad - (event.risk / 100) * (height - pad * 2);
-    return { x, y, event };
-  });
-
-  ctx.beginPath();
-  points.forEach((point, index) => {
-    if (index === 0) ctx.moveTo(point.x, point.y);
-    else ctx.lineTo(point.x, point.y);
-  });
-  ctx.strokeStyle = "#007f73";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  points.forEach((point) => {
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, point.event.risk >= 88 ? 6 : 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = point.event.risk >= 88 ? "#c24138" : point.event.risk >= 68 ? "#b97612" : "#007f73";
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  });
-
-  ctx.fillStyle = "#66736f";
-  ctx.font = "700 12px Inter, system-ui, sans-serif";
-  ctx.fillText("0", 12, height - pad + 4);
-  ctx.fillText("100", 12, pad + 4);
-}
-
-function paintEmptyTimeline() {
-  const canvas = elements.timelineCanvas;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawChartFrame(ctx, canvas.width, canvas.height);
-  ctx.fillStyle = "#66736f";
-  ctx.font = "800 16px Inter, system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("Risk timeline will appear here", canvas.width / 2, canvas.height / 2);
-  ctx.textAlign = "start";
-}
-
-function drawChartFrame(ctx, width, height) {
-  ctx.fillStyle = "#fbfdfc";
-  ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "#dfe8e2";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i += 1) {
-    const y = 32 + i * ((height - 64) / 4);
-    ctx.beginPath();
-    ctx.moveTo(38, y);
-    ctx.lineTo(width - 26, y);
-    ctx.stroke();
-  }
-}
-
-function renderVerdict() {
-  if (!state.events.length) {
-    elements.aiVerdict.textContent =
-      "Load sample telemetry or paste your own events to generate a defensive triage verdict.";
-    return;
-  }
-  const topIncident = state.incidents[0];
-  if (!topIncident) {
-    elements.aiVerdict.textContent =
-      `The model found ${state.events.length} event(s), but no correlated incident exceeded the current sensitivity threshold. Continue monitoring and review any medium-risk single events.`;
-    return;
-  }
-  elements.aiVerdict.textContent =
-    `${topIncident.summary} Recommended priority is ${topIncident.severity.toUpperCase()} with ${state.confidence}% model confidence. Start with containment of ${topIncident.entity}, then preserve evidence from ${topIncident.evidence.map((event) => event.host).filter(Boolean).slice(0, 2).join(" and ") || "the affected assets"}.`;
-}
-
-function renderSignals() {
-  if (!state.topSignals.length) {
-    elements.signalList.className = "signal-list empty-state";
-    elements.signalList.textContent = "No signals yet.";
-    return;
-  }
-  elements.signalList.className = "signal-list";
-  elements.signalList.innerHTML = state.topSignals
-    .map(
-      (signal) => `
-      <article class="signal-item">
-        <div class="signal-name">${escapeHtml(signal.label)}</div>
-        <div class="incident-meta">
-          <span>${escapeHtml(signal.tactic)}</span>
-          <span>${signal.count} hit${signal.count === 1 ? "" : "s"}</span>
-        </div>
-        <div class="signal-bar" aria-hidden="true"><span style="width:${signal.score}%"></span></div>
-      </article>
-    `
-    )
-    .join("");
-}
-
-function renderIncidents() {
-  elements.incidentSummary.textContent = `${state.incidents.length} open`;
-  if (!state.incidents.length) {
-    elements.incidentList.className = "incident-list empty-state";
-    elements.incidentList.textContent = "No incidents detected yet.";
-    return;
-  }
-  elements.incidentList.className = "incident-list";
-  elements.incidentList.innerHTML = state.incidents.map(renderIncidentItem).join("");
-  document.querySelectorAll(".incident-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      state.selectedIncidentId = item.dataset.incidentId;
-      renderIncidents();
-      renderInspector();
-      refreshIcons();
-    });
-  });
-}
-
-function renderIncidentItem(incident) {
-  return `
-    <article class="incident-item ${incident.id === state.selectedIncidentId ? "active" : ""}" data-incident-id="${incident.id}">
-      <div class="incident-header">
-        <h3>${escapeHtml(incident.title)}</h3>
-        <span class="badge ${incident.severity}">${incident.severity}</span>
-      </div>
-      <p>${escapeHtml(incident.summary)}</p>
-      <div class="incident-meta">
-        <span>${escapeHtml(incident.entity)}</span>
-        <span>${formatDate(incident.firstSeen)} - ${formatDate(incident.lastSeen)}</span>
-        <span>${incident.evidence.length} evidence events</span>
-      </div>
-      <div class="risk-row">
-        <div class="risk-track"><div class="risk-fill" style="width:${incident.risk}%"></div></div>
-        <strong>${incident.risk}</strong>
-      </div>
-    </article>
-  `;
-}
-
-function renderInspector() {
-  const incident = state.incidents.find((item) => item.id === state.selectedIncidentId);
-  if (!incident) {
-    elements.incidentInspector.className = "inspector-body empty-state";
-    elements.incidentInspector.textContent =
-      "Select an incident to inspect evidence, MITRE mapping, and recommended containment steps.";
-    return;
-  }
-  elements.incidentInspector.className = "inspector-body";
-  elements.incidentInspector.innerHTML = `
-    <section class="inspector-section">
-      <h3>Executive Summary</h3>
-      <p>${escapeHtml(incident.summary)}</p>
-    </section>
-    <section class="inspector-section">
-      <h3>MITRE-Style Mapping</h3>
-      <div class="pill-row">
-        ${incident.tactics.map((item) => `<span class="mini-pill">${escapeHtml(item)}</span>`).join("")}
-        ${incident.techniques.map((item) => `<span class="mini-pill">${escapeHtml(item)}</span>`).join("")}
-      </div>
-    </section>
-    <section class="inspector-section">
-      <h3>Evidence</h3>
-      ${incident.evidence
-        .slice(0, 6)
-        .map(
-          (event) => `
-          <div class="evidence-line">
-            <i data-lucide="circle-alert" aria-hidden="true"></i>
-            <div>
-              <strong>${event.risk}/100 ${escapeHtml(event.event_type)}</strong>
-              <p>${escapeHtml(event.message)}</p>
-              <small>${formatDate(event.timestamp)} | ${escapeHtml(event.user)} | ${escapeHtml(event.host)}</small>
-            </div>
-          </div>`
-        )
-        .join("")}
-    </section>
-    <section class="inspector-section">
-      <h3>Containment Focus</h3>
-      <p>${escapeHtml(getContainmentFocus(incident))}</p>
-    </section>
-  `;
-}
-
-function renderGraph() {
-  if (!state.incidents.length) {
-    elements.graphCaption.textContent = "No correlated path";
-    elements.attackGraph.innerHTML = '<div class="empty-state">Run analysis to build a graph.</div>';
-    return;
-  }
-  const incident = state.incidents[0];
-  elements.graphCaption.textContent = `${incident.stage} | ${incident.risk}/100 risk`;
-  const stages = buildGraphStages(incident);
-  elements.attackGraph.innerHTML = `
-    <div class="graph-grid">
-      ${stages
-        .map(
-          (stage) => `
-          <article class="graph-node">
-            <span class="graph-stage">${escapeHtml(stage.stage)}</span>
-            <strong>${escapeHtml(stage.title)}</strong>
-            <p>${escapeHtml(stage.detail)}</p>
-            <span class="badge ${stage.severity}">${stage.severity}</span>
-          </article>
-        `
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function buildGraphStages(incident) {
-  const signals = new Set(incident.evidence.flatMap((event) => event.signals.map((signal) => signal.id)));
-  const stages = [
-    {
-      stage: "Access",
-      title: signals.has("brute_force_success") ? "Identity foothold" : "Initial signal",
-      detail: signals.has("brute_force_success")
-        ? "Repeated failures were followed by a successful login."
-        : "Suspicious activity established the first observable signal.",
-      severity: signals.has("brute_force_success") ? "high" : "medium"
-    },
-    {
-      stage: "Privilege",
-      title: signals.has("privilege_escalation") ? "Privilege expansion" : "Permission review",
-      detail: signals.has("privilege_escalation")
-        ? "Administrative or high-impact permissions changed after access."
-        : "No confirmed privilege escalation was found.",
-      severity: signals.has("privilege_escalation") ? "critical" : "low"
-    },
-    {
-      stage: "Execution",
-      title: signals.has("encoded_shell") ? "Suspicious execution" : "Execution unknown",
-      detail: signals.has("encoded_shell")
-        ? "Encoded command execution increased endpoint compromise likelihood."
-        : "Endpoint execution evidence is limited in the current dataset.",
-      severity: signals.has("encoded_shell") ? "critical" : "low"
-    },
-    {
-      stage: "Control",
-      title: signals.has("beaconing") ? "Beaconing cadence" : "C2 not confirmed",
-      detail: signals.has("beaconing")
-        ? "Repeated DNS or network calls suggest possible command-and-control."
-        : "No repeated network cadence was detected.",
-      severity: signals.has("beaconing") ? "high" : "low"
-    },
-    {
-      stage: "Impact",
-      title: signals.has("data_exfiltration") ? "Data movement" : "Impact pending",
-      detail: signals.has("data_exfiltration")
-        ? "Large data access or outbound transfer indicates possible exfiltration."
-        : "No high-volume data movement was found.",
-      severity: signals.has("data_exfiltration") ? "critical" : "low"
-    }
-  ];
-  return stages;
-}
-
-function renderPlaybooks() {
-  if (!state.incidents.length) {
-    elements.playbookList.className = "playbook-list empty-state";
-    elements.playbookList.textContent = "No playbooks generated yet.";
-    return;
-  }
-  const playbooks = [...new Set(state.incidents.map((incident) => incident.playbook))];
-  elements.playbookList.className = "playbook-list";
-  elements.playbookCaption.textContent = `${playbooks.length} generated`;
-  elements.playbookList.innerHTML = playbooks
-    .map((name) => {
-      const steps = playbookTemplates[name] || playbookTemplates["General high-risk telemetry review"];
-      return `
-      <article class="playbook-item">
-        <h3>${escapeHtml(name)}</h3>
-        ${steps
-          .map(
-            (step, index) => `
-            <div class="playbook-step">
-              <span>${index + 1}</span>
-              <p>${escapeHtml(step)}</p>
-            </div>`
-          )
-          .join("")}
-      </article>
-    `;
-    })
-    .join("");
-}
-
-function seedChat() {
-  elements.chatLog.innerHTML = "";
-  addChat(
-    "ai",
-    "I can summarize incidents, explain model evidence, suggest containment, and draft analyst notes after you run triage."
-  );
-}
-
-function addChat(role, message) {
-  const node = document.createElement("div");
-  node.className = `chat-message ${role}`;
-  node.innerHTML = `<span>${escapeHtml(message)}</span>`;
-  elements.chatLog.appendChild(node);
-  elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
-}
-
-function answerQuestion(prompt) {
-  if (!state.events.length) {
-    return "Load telemetry first and I can reason over the detected signals. The sample dataset is a good starting point.";
-  }
-
-  const incident = state.incidents[0];
-  const lower = prompt.toLowerCase();
-  if (!incident) {
-    return "I do not see a correlated incident at the current threshold. Review medium-risk events, increase sensitivity if needed, and add identity or endpoint context to improve confidence.";
-  }
-
-  if (/leadership|executive|summary|summarize/.test(lower)) {
-    return `${incident.severity.toUpperCase()} incident: ${incident.title}. ${incident.summary} Current recommendation is containment-first, with evidence preservation before broad remediation.`;
-  }
-  if (/contain|first|priority|do/.test(lower)) {
-    return getContainmentFocus(incident);
-  }
-  if (/evidence|preserve|artifact|log/.test(lower)) {
-    return `Preserve sign-in logs, privilege-change audit records, endpoint process trees, command lines, DNS history, and object access logs. Highest-value evidence event: "${incident.evidence[0]?.message || "not available"}".`;
-  }
-  if (/attack chain|chain|path|likely/.test(lower)) {
-    return `Most likely path: ${buildGraphStages(incident)
-      .filter((stage) => stage.severity !== "low")
-      .map((stage) => stage.title)
-      .join(" -> ")}. The model confidence is ${state.confidence}%.`;
-  }
-  if (/blast|scope|radius|affected/.test(lower)) {
-    const hosts = [...new Set(incident.evidence.map((event) => event.host).filter(Boolean))];
-    const users = [...new Set(incident.evidence.map((event) => event.user).filter(Boolean))];
-    return `Current blast radius includes ${users.join(", ")} and ${hosts.join(", ")}. Hunt for the same source IPs, destinations, and signal patterns across the full environment before closing scope.`;
-  }
-  return `${incident.summary} The safest next analyst move is to validate the identity, isolate affected endpoints if endpoint execution is present, and preserve the telemetry that explains the decision.`;
-}
-
-function getContainmentFocus(incident) {
-  const signals = new Set(incident.evidence.flatMap((event) => event.signals.map((signal) => signal.id)));
-  if (signals.has("data_exfiltration") && signals.has("privilege_escalation")) {
-    return `Contain ${incident.entity} immediately: revoke active sessions, remove newly granted privileges, freeze sensitive data access, and review large object downloads before restoring access.`;
-  }
-  if (signals.has("credential_dump") || signals.has("encoded_shell")) {
-    return "Isolate the endpoint, preserve process and memory evidence, rotate credentials used on the host, and block observed external destinations.";
-  }
-  if (signals.has("risky_exposure")) {
-    return "Rollback the public exposure if it lacks approval, then audit access attempts during the exposure window.";
-  }
-  return "Open an analyst case, preserve source telemetry, verify asset owner context, and hunt for related indicators.";
-}
-
-function exportReport() {
-  const report = {
-    generated_at: new Date().toISOString(),
-    project: "Sentinel Forge AI",
-    confidence: state.confidence,
-    coverage: state.coverage,
-    incidents: state.incidents.map((incident) => ({
-      title: incident.title,
-      severity: incident.severity,
-      risk: incident.risk,
-      entity: incident.entity,
-      summary: incident.summary,
-      tactics: incident.tactics,
-      techniques: incident.techniques,
-      playbook: incident.playbook,
-      evidence: incident.evidence.map((event) => ({
-        timestamp: event.timestamp,
-        type: event.event_type,
-        risk: event.risk,
-        user: event.user,
-        host: event.host,
-        message: event.message
-      }))
-    }))
-  };
-  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `sentinel-forge-report-${Date.now()}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
-  showToast("Report exported");
-}
-
 function showToast(message) {
-  const toast = document.createElement("div");
-  toast.className = "report-toast";
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 1800);
+  elements.toast.textContent = message;
+  elements.toast.classList.add("show");
+  window.clearTimeout(showToast.timeout);
+  showToast.timeout = window.setTimeout(() => {
+    elements.toast.classList.remove("show");
+  }, 1800);
 }
 
-function switchTab(tabName) {
-  document.querySelectorAll(".tab").forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.tab === tabName);
-  });
-  document.querySelectorAll(".view").forEach((view) => {
-    view.classList.toggle("active", view.id === tabName);
-  });
+function extractKeywords(text) {
+  const stop = new Set([
+    "about",
+    "after",
+    "also",
+    "because",
+    "between",
+    "could",
+    "from",
+    "have",
+    "into",
+    "should",
+    "that",
+    "their",
+    "there",
+    "this",
+    "with",
+    "what",
+    "when",
+    "where",
+    "will",
+    "cybersecurity"
+  ]);
+  return [...new Set((text.toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) || []).filter((word) => !stop.has(word)))];
 }
 
-function formatDate(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString([], {
+function formatAssistantText(text) {
+  return escapeHtml(text).replace(/\n/g, "<br />");
+}
+
+function formatShortDate(value) {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit"
-  });
+  }).format(new Date(value));
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+function permissionLabel(key) {
+  return permissionMeta.find((item) => item[0] === key)?.[1] || key;
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.\s-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasAnyTerm(text, terms) {
+  return terms.some((term) => text.includes(normalizeText(term)));
+}
+
+function ratioScore(matches, total) {
+  if (!total) return 0;
+  return Math.max(0, Math.min(100, Math.round((matches / total) * 100)));
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function formatStatus(status) {
+  const labels = {
+    drafted: "Drafted",
+    applied: "Applied",
+    pending: "Pending",
+    assessment: "Assessment",
+    interview: "Interview",
+    rejected: "Rejected",
+    offer: "Offer"
+  };
+  return labels[status] || "Pending";
+}
+
+function stripHtml(value) {
+  const template = document.createElement("template");
+  template.innerHTML = value || "";
+  return template.content.textContent || "";
+}
+
+function escapeCsv(value) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function normalizePhrase(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function escapeHtml(value) {
@@ -1069,4 +1472,12 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createId(prefix) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}-${Date.now().toString(36)}`;
 }

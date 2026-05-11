@@ -66,7 +66,7 @@ const viewTitles = {
   ask: "Ask Achavelli",
   research: "Research Desk",
   jobs: "Job Command Center",
-  security: "Bug Bounty Lab",
+  security: "Bug Bounty Analyzer",
   memory: "Memory and Permissions"
 };
 
@@ -140,6 +140,7 @@ function cacheElements() {
     "programName",
     "targetAsset",
     "scopeNotes",
+    "bountyFile",
     "scopeApproved",
     "assessSecurity",
     "saveSecurity",
@@ -220,7 +221,14 @@ function bindEvents() {
     state.latestSecurity = assessment;
     saveState();
     renderSecurityOutput();
-    showToast("Assessment ready");
+    showToast("Bug findings ready");
+  });
+
+  elements.bountyFile.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    elements.scopeNotes.value = await file.text();
+    showToast("Document imported");
   });
 
   elements.saveSecurity.addEventListener("click", saveSecurityReport);
@@ -956,45 +964,52 @@ function buildSecurityAssessment() {
   const target = elements.targetAsset.value.trim() || "Unspecified target";
   const notes = elements.scopeNotes.value.trim();
   const authorized = elements.scopeApproved.checked;
+  const review = analyzeBountyDocument(`${target}\n${notes}`);
 
   if (!authorized) {
     return `
       <h3>Scope Gate</h3>
-      <p><strong>${escapeHtml(program)}</strong> cannot be assessed yet because authorized scope is not confirmed.</p>
-      <h3>Required Before Testing</h3>
+      <p><strong>${escapeHtml(program)}</strong> is not marked as authorized yet. I can organize the document, but I will not label findings as actionable bounty submissions until authorized scope is confirmed.</p>
+      <h3>Document Signals Found</h3>
       <ul>
-        <li>Program page or written permission.</li>
-        <li>Allowed domains, IPs, APIs, and mobile apps.</li>
-        <li>Allowed testing methods and prohibited actions.</li>
-        <li>Report format, severity rules, and disclosure policy.</li>
+        <li>Assets/endpoints detected: ${review.assets.length || 0}</li>
+        <li>Potential vulnerability areas: ${review.findings.length || 0}</li>
+        <li>Document length: ${notes.length.toLocaleString()} characters</li>
+      </ul>
+      <h3>Required Before Real Testing</h3>
+      <ul>
+        <li>Confirm this target is listed in a bug bounty or VDP scope.</li>
+        <li>Confirm allowed test methods, prohibited actions, rate limits, and report rules.</li>
+        <li>Use test accounts only where the program allows them.</li>
       </ul>
     `;
   }
 
-  const findings = inferSecurityAngles(`${target} ${notes}`);
+  const findings = review.findings;
   return `
     <h3>${escapeHtml(program)}</h3>
     <p><strong>Target:</strong> ${escapeHtml(target)}</p>
-    <h3>High-Value Angles</h3>
+    <div class="finding-summary">
+      <span>${findings.length} likely findings</span>
+      <span>${review.assets.length} assets/endpoints</span>
+      <span>${review.highCount} high priority</span>
+    </div>
+    <h3>Likely Bugs From The Document</h3>
+    <div class="finding-list">
+      ${findings.map(renderFinding).join("")}
+    </div>
+    <h3>Detected Assets And Endpoints</h3>
+    <div class="keyword-pills">
+      ${review.assets.length ? review.assets.slice(0, 18).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("") : "<span>No concrete asset was detected. Add URLs, API paths, or endpoint names for stronger analysis.</span>"}
+    </div>
+    <h3>Documentation Needed Before Submission</h3>
     <ul>
-      ${findings.map((finding) => `<li><strong>${finding.title}:</strong> ${finding.body}</li>`).join("")}
+      <li>Exact in-scope asset and program policy link.</li>
+      <li>Minimum safe reproduction steps using allowed test accounts.</li>
+      <li>Request and response evidence with tokens, cookies, and private data redacted.</li>
+      <li>Clear impact: account takeover, cross-tenant data access, privilege escalation, data modification, or sensitive disclosure.</li>
+      <li>Remediation tied to the root cause, not just the symptom.</li>
     </ul>
-    <h3>Evidence Checklist</h3>
-    <ul>
-      <li>Exact asset and program scope reference.</li>
-      <li>Steps to reproduce with timestamps and test account roles.</li>
-      <li>Request and response samples with secrets removed.</li>
-      <li>Business impact stated in plain language.</li>
-      <li>Suggested fix tied to the root cause.</li>
-    </ul>
-    <h3>Report Skeleton</h3>
-    <ol>
-      <li>Summary: one sentence describing the issue and impact.</li>
-      <li>Scope: program, asset, and permission proof.</li>
-      <li>Reproduction: minimal safe steps.</li>
-      <li>Impact: account, data, privilege, or system boundary affected.</li>
-      <li>Remediation: precise control or validation recommendation.</li>
-    </ol>
   `;
 }
 
@@ -1019,46 +1034,192 @@ function saveSecurityReport() {
   showToast("Security assessment saved");
 }
 
-function inferSecurityAngles(input) {
-  const text = input.toLowerCase();
-  const findings = [];
-  const add = (title, body) => findings.push({ title, body });
+function analyzeBountyDocument(input) {
+  const raw = String(input || "");
+  const lower = raw.toLowerCase();
+  const assets = extractBountyAssets(raw);
+  const signatures = [
+    {
+      title: "Broken access control / IDOR",
+      severity: "High",
+      terms: ["user_id", "userid", "account", "tenant", "org", "invoice", "order", "profile", "uuid", "object id"],
+      patterns: [/user[_-]?id|account|tenant|org|invoice|order|profile|uuid|object id/i, /\/api\/(?:v\d+\/)?(?:users|accounts|orders|invoices|profiles|tenants)/i],
+      impact: "A user may access or modify another user, tenant, order, invoice, or profile object.",
+      validation: "Use two allowed test accounts and verify whether changing only the object identifier crosses an authorization boundary.",
+      remediation: "Enforce server-side object ownership and role checks on every read and write."
+    },
+    {
+      title: "Privilege escalation / role bypass",
+      severity: "High",
+      terms: ["admin", "role", "permission", "privilege", "team", "invite", "owner", "member"],
+      patterns: [/admin|role|permission|privilege|owner|member|team|invite/i, /\/(?:admin|roles|permissions|teams|invites)/i],
+      impact: "A lower-privileged user may gain administrator or higher-role actions.",
+      validation: "Compare the same action with low-privilege and admin test accounts, preserving request and response evidence.",
+      remediation: "Centralize authorization checks and deny privileged actions by default."
+    },
+    {
+      title: "Authentication or session weakness",
+      severity: "High",
+      terms: ["login", "jwt", "session", "cookie", "oauth", "refresh token", "reset", "mfa", "otp"],
+      patterns: [/login|jwt|session|cookie|oauth|refresh token|password reset|mfa|otp/i, /\/(?:auth|login|oauth|session|reset|mfa|otp)/i],
+      impact: "Session, token, reset, or MFA logic may allow account takeover or unauthorized access.",
+      validation: "Document token lifetime, reset flow behavior, session invalidation, and role changes without bypassing rate limits.",
+      remediation: "Harden token expiry, reset validation, MFA enforcement, and session revocation."
+    },
+    {
+      title: "Sensitive data exposure",
+      severity: "High",
+      terms: ["pii", "email", "phone", "address", "ssn", "token", "secret", "api key", "private"],
+      patterns: [/pii|email|phone|address|ssn|token|secret|api[_-]?key|private|confidential/i, /authorization:|set-cookie:|access_token|refresh_token/i],
+      impact: "The application may expose private user data, credentials, tokens, or secrets.",
+      validation: "Capture minimal redacted evidence showing the data type, affected role, and in-scope endpoint.",
+      remediation: "Reduce response data, enforce authorization, redact secrets, and rotate exposed credentials."
+    },
+    {
+      title: "Unsafe file upload or import",
+      severity: "Medium",
+      terms: ["upload", "file", "avatar", "image", "pdf", "csv", "import", "attachment"],
+      patterns: [/upload|file|avatar|image|pdf|csv|import|attachment/i, /\/(?:upload|files|attachments|imports|avatars)/i],
+      impact: "File handling may allow unsafe content, unauthorized file access, stored XSS, or parser abuse.",
+      validation: "Check allowed file types, storage location, access permissions, and whether uploaded content executes or leaks.",
+      remediation: "Validate content server-side, store files outside executable paths, scan content, and enforce object access."
+    },
+    {
+      title: "SSRF, unsafe URL fetch, or open redirect",
+      severity: "High",
+      terms: ["webhook", "callback", "url", "redirect", "next", "return_url", "fetch", "import from url"],
+      patterns: [/webhook|callback|return_url|redirect|next=|url=|fetch|import from url|metadata/i, /\/(?:webhook|callback|redirect|fetch|import)/i],
+      impact: "User-controlled URLs may trigger server-side requests, credential leakage, or unsafe redirects.",
+      validation: "Stay within the program rules and verify URL allowlisting, redirect handling, and internal-host blocking.",
+      remediation: "Use strict allowlists, block private networks and metadata hosts, and validate redirects."
+    },
+    {
+      title: "Stored or reflected XSS",
+      severity: "Medium",
+      terms: ["html", "script", "markdown", "comment", "template", "rich text", "search", "q"],
+      patterns: [/html|script|markdown|comment|template|rich text|search|xss/i, /[?&](?:q|search|query|return)=/i],
+      impact: "User-controlled content may execute JavaScript in another user's browser.",
+      validation: "Identify the input, rendering context, affected role, and whether the behavior is stored or reflected.",
+      remediation: "Contextually encode output, sanitize rich text, and enforce a restrictive content security policy."
+    },
+    {
+      title: "Injection in search, filters, or GraphQL/API queries",
+      severity: "Medium",
+      terms: ["search", "filter", "sort", "query", "graphql", "sql", "where", "cursor"],
+      patterns: [/search|filter|sort|query|graphql|sql|where|cursor/i, /\/(?:graphql|search|query|filter)/i],
+      impact: "Query parameters may expose unauthorized data, cause injection, or bypass backend filters.",
+      validation: "Document safe input/output differences, error behavior, and authorization impact without destructive payloads.",
+      remediation: "Parameterize queries, enforce schema validation, and apply authorization after filtering."
+    },
+    {
+      title: "Business logic or rate-limit weakness",
+      severity: "Medium",
+      terms: ["rate limit", "otp", "coupon", "invite", "trial", "payment", "reset", "verification"],
+      patterns: [/rate limit|otp|coupon|invite|trial|payment|reset|verification|one-time/i],
+      impact: "Repeated or reordered workflow actions may bypass intended limits or business rules.",
+      validation: "Track exact sequence, account state, limits, and business impact using non-destructive allowed tests.",
+      remediation: "Add server-side state checks, idempotency, abuse limits, and workflow integrity validation."
+    },
+    {
+      title: "Cloud storage or public asset exposure",
+      severity: "High",
+      terms: ["s3", "bucket", "blob", "firebase", "storage", "cloudfront", "cdn", "signed url"],
+      patterns: [/s3|bucket|blob|firebase|storage|cloudfront|cdn|signed url/i, /https?:\/\/[^\s]+(?:s3|blob|storage|firebase|cloudfront)[^\s]*/i],
+      impact: "Cloud objects may be public, listable, writable, or accessible after signed URL expiry expectations.",
+      validation: "Document public readability/listing/write behavior and avoid accessing data outside program rules.",
+      remediation: "Disable public access, scope signed URLs, enforce object authorization, and audit bucket policies."
+    }
+  ];
 
-  if (/login|auth|session|jwt|token|oauth|sso|password/.test(text)) {
-    add("Authentication and session logic", "Check role separation, token expiry, session invalidation, reset flows, and privilege changes.");
-  }
-  if (/user_id|userid|account|order|invoice|uuid|id=|profile|tenant/.test(text)) {
-    add("Broken access control or IDOR", "Compare low-privilege and high-privilege accounts for object access across users or tenants.");
-  }
-  if (/api|graphql|rest|endpoint|json/.test(text)) {
-    add("API authorization", "Map endpoints by role and verify server-side authorization on every sensitive read or write.");
-  }
-  if (/upload|file|image|pdf|csv|import/.test(text)) {
-    add("File handling", "Review extension validation, content type checks, storage permissions, and unsafe parsing behavior.");
-  }
-  if (/redirect|callback|return_url|next=|url=/.test(text)) {
-    add("Redirect and callback abuse", "Check allowlists, OAuth callback handling, and token leakage through redirects.");
-  }
-  if (/s3|bucket|blob|firebase|storage|cloudfront|cdn/.test(text)) {
-    add("Cloud storage exposure", "Confirm object permissions, signed URL expiry, bucket listing, and public write risk.");
-  }
-  if (/webhook|fetch|url|import from url|ssrf|metadata/.test(text)) {
-    add("Server-side request surface", "Look for safe validation of user-supplied URLs, redirects, internal hosts, and metadata endpoints.");
-  }
-  if (/xss|html|script|markdown|comment|template/.test(text)) {
-    add("Client-side injection", "Review stored and reflected rendering points, sanitization, content security policy, and privileged contexts.");
-  }
-  if (/rate|otp|mfa|coupon|invite|trial|reset/.test(text)) {
-    add("Business logic and rate limits", "Check abuse paths where repeated actions create account, payment, invite, or verification impact.");
-  }
+  const findings = signatures
+    .map((signature) => buildBountyFinding(signature, lower, raw, assets))
+    .filter(Boolean)
+    .sort((a, b) => b.confidence - a.confidence);
 
-  if (!findings.length) {
-    add("Access control first", "Start by mapping user roles, sensitive objects, and state-changing actions inside the authorized scope.");
-    add("Input and workflow review", "Look for places where user-controlled data crosses trust boundaries or changes business state.");
-    add("Exposure review", "Check public assets, metadata, headers, and accidental information disclosure without aggressive scanning.");
-  }
+  const fallbackFindings = findings.length
+    ? findings
+    : [
+        {
+          title: "Insufficient evidence for a concrete bug",
+          severity: "Info",
+          confidence: 35,
+          impact: "The pasted document does not contain enough endpoint, role, parameter, or response evidence to identify a likely vulnerability.",
+          evidence: ["Paste scope, endpoint paths, parameters, roles, request/response notes, and observed behavior for stronger results."],
+          validation: "Collect the affected asset, role, endpoint, expected behavior, actual behavior, and safe reproduction steps.",
+          remediation: "Not applicable until a concrete issue is identified.",
+          report: "This is a documentation gap, not a bounty submission yet."
+        }
+      ];
 
-  return findings.slice(0, 6);
+  return {
+    assets,
+    findings: fallbackFindings.slice(0, 8),
+    highCount: fallbackFindings.filter((finding) => finding.severity === "High" || finding.severity === "Critical").length
+  };
+}
+
+function buildBountyFinding(signature, lower, raw, assets) {
+  const termHits = signature.terms.filter((term) => lower.includes(term));
+  const evidence = extractEvidence(raw, signature.patterns);
+  const assetBoost = assets.some((asset) => signature.patterns.some((pattern) => pattern.test(asset))) ? 1 : 0;
+  const hitScore = termHits.length + evidence.length + assetBoost;
+  if (!hitScore) return null;
+
+  const confidence = Math.min(96, 42 + termHits.length * 8 + evidence.length * 10 + assetBoost * 8);
+  return {
+    title: signature.title,
+    severity: confidence >= 78 && signature.severity === "High" ? "High" : signature.severity,
+    confidence,
+    impact: signature.impact,
+    evidence: evidence.length ? evidence : [`Document mentions: ${termHits.slice(0, 6).join(", ")}`],
+    validation: signature.validation,
+    remediation: signature.remediation,
+    report: `Potential ${signature.title.toLowerCase()} in the authorized target. Evidence should prove affected endpoint, role, expected behavior, actual behavior, and impact.`
+  };
+}
+
+function renderFinding(finding) {
+  return `
+    <article class="finding-card">
+      <header>
+        <div>
+          <strong>${escapeHtml(finding.title)}</strong>
+          <span>${finding.confidence}% confidence</span>
+        </div>
+        <span class="severity-badge ${finding.severity.toLowerCase()}">${escapeHtml(finding.severity)}</span>
+      </header>
+      <h4>Evidence pulled from document</h4>
+      <ul>
+        ${finding.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+      <h4>Impact</h4>
+      <p>${escapeHtml(finding.impact)}</p>
+      <h4>Safe validation checklist</h4>
+      <p>${escapeHtml(finding.validation)}</p>
+      <h4>Report draft</h4>
+      <p>${escapeHtml(finding.report)}</p>
+      <h4>Remediation</h4>
+      <p>${escapeHtml(finding.remediation)}</p>
+    </article>
+  `;
+}
+
+function extractBountyAssets(input) {
+  const urls = input.match(/https?:\/\/[^\s"'<>`]+/gi) || [];
+  const paths = input.match(/\/(?:api|v\d+|graphql|oauth|auth|admin|user|users|account|accounts|profile|profiles|order|orders|invoice|invoices|upload|uploads|file|files|webhook|callback|redirect|search|export|import|tenant|tenants|org|organizations)[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*/gi) || [];
+  return unique([...urls, ...paths]).slice(0, 40);
+}
+
+function extractEvidence(raw, patterns) {
+  const lines = raw
+    .split(/\n+/)
+    .flatMap((line) => (line.length > 500 ? line.split(/(?<=[.!?])\s+/) : [line]))
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines
+    .filter((line) => patterns.some((pattern) => pattern.test(line)))
+    .map((line) => line.replace(/\s+/g, " ").slice(0, 260))
+    .slice(0, 4);
 }
 
 function startVoiceInput(options = {}) {

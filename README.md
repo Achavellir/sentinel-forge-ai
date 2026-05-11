@@ -22,7 +22,7 @@ http://localhost:5173
 - Voice-lock phrase gate before voice commands.
 - Job command center with resume profile, detailed resume-to-job match %, fit scoring, application packets, status counts, assessment/interview tracking, and CSV export.
 - Research paper blueprint generator.
-- Bug bounty assessment helper with an authorization gate.
+- Bug bounty analyzer with an authorization gate, document import, likely findings, evidence extraction, severity, report drafts, and remediation.
 - Permission toggles with cards and wallets locked.
 - Export to JSON.
 - PWA manifest and service worker.

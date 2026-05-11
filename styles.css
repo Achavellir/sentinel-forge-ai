@@ -94,6 +94,7 @@ textarea:focus-visible {
 .task-item,
 .permission-row,
 .voice-lock-panel,
+.file-drop,
 .memory-item header {
   align-items: center;
   display: flex;
@@ -735,6 +736,92 @@ select {
   color: var(--red);
 }
 
+.finding-summary {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 14px 0 18px;
+}
+
+.finding-summary span {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: #303640;
+  font-size: 0.84rem;
+  font-weight: 780;
+  padding: 10px;
+  text-align: center;
+}
+
+.finding-list {
+  display: grid;
+  gap: 12px;
+}
+
+.finding-card {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.finding-card header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.finding-card header strong,
+.finding-card header span {
+  display: block;
+}
+
+.finding-card header span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 740;
+  margin-top: 3px;
+}
+
+.finding-card h4 {
+  font-size: 0.84rem;
+  margin: 14px 0 6px;
+}
+
+.finding-card p,
+.finding-card li {
+  color: #303640;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.severity-badge {
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 820;
+  padding: 5px 8px;
+}
+
+.severity-badge.high,
+.severity-badge.critical {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.severity-badge.medium {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.severity-badge.info,
+.severity-badge.low {
+  background: #eef2f7;
+  color: #3f4752;
+}
+
 .match-hero {
   background: var(--surface-soft);
   border: 1px solid var(--line);
@@ -867,6 +954,32 @@ select {
 .check-row {
   gap: 10px;
   margin-top: 12px;
+}
+
+.file-drop {
+  background: var(--surface-soft);
+  border: 1px dashed rgba(10, 132, 255, 0.42);
+  border-radius: var(--radius);
+  color: var(--blue);
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  min-height: 44px;
+  overflow: hidden;
+  padding: 10px;
+  position: relative;
+}
+
+.file-drop span {
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 780;
+}
+
+.file-drop input {
+  inset: 0;
+  opacity: 0;
+  position: absolute;
 }
 
 .check-row input {
@@ -1068,7 +1181,8 @@ select {
   .assistant-dock,
   .application-list,
   .field-grid,
-  .match-hero {
+  .match-hero,
+  .finding-summary {
     grid-template-columns: 1fr;
   }
 

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="1PhishGuard AI">
+  <rect width="1200" height="630" fill="#0a0f1e"/>
+  <defs>
+    <radialGradient id="g1" cx="30%" cy="20%" r="60%">
+      <stop offset="0" stop-color="#2563eb" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#2563eb" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="g2" cx="80%" cy="70%" r="50%">
+      <stop offset="0" stop-color="#06b6d4" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#06b6d4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#g1)"/>
+  <rect width="1200" height="630" fill="url(#g2)"/>
+  <path d="M600 106l168 62v130c0 108-66 178-168 226-102-48-168-118-168-226V168l168-62z" fill="#101a33" stroke="#06b6d4" stroke-width="6"/>
+  <path d="M533 307l44 44 101-118" fill="none" stroke="#10b981" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="600" y="470" text-anchor="middle" fill="#f8fafc" font-size="70" font-family="Arial, sans-serif" font-weight="800">1PhishGuard AI</text>
+  <text x="600" y="532" text-anchor="middle" fill="#9cc8ff" font-size="30" font-family="Arial, sans-serif">AI phishing detection for modern teams</text>
+</svg>

@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #0a0f1e;
+  font-family: 'DM Sans', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.04) 1px, transparent 1px), #0a0f1e;
+  background-size:
+    52px 52px,
+    52px 52px,
+    auto;
+  color: #f8fafc;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(6, 182, 212, 0.32);
+}
+
+.glass {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.84), rgba(15, 23, 42, 0.54));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.glass-subtle {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.54);
+  backdrop-filter: blur(12px);
+}
+
+.hero-image-mask {
+  mask-image: linear-gradient(90deg, transparent 0, black 18%, black 82%, transparent 100%);
+}
+
+.risk-bar-safe {
+  background: linear-gradient(90deg, #10b981, #06b6d4);
+}
+
+.risk-bar-suspicious {
+  background: linear-gradient(90deg, #f59e0b, #fb7185);
+}
+
+.risk-bar-phishing {
+  background: linear-gradient(90deg, #ef4444, #f97316);
+}
+
+.dashboard-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
